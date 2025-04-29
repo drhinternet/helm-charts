@@ -1,0 +1,15 @@
+apiVersion: v1
+
+kind: ConfigMap
+
+metadata:
+  name: {{ .Release.Name }}-configmap
+
+data:
+{{- range $name, $content := .Values.config }}
+  {{ $name }}: |
+{{ $content | indent 4 }}
+{{- end }}
+  # The presence of a new value in this file will cause GreenArrow to reload its configuration.
+  greenarrow.conf.perform_autoreload: |
+    {{ uuidv4 }}

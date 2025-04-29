@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+
+kind: Deployment
+
+metadata:
+  name: {{ .Release.Name }}-mta
+
+spec:
+  replicas: {{ .Values.mtaReplicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+      role: mta
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+        role: mta
+    spec:
+      containers:
+        - name: greenarrow-mta
+          image: "greenarrowemail/greenarrow:{{ .Chart.AppVersion }}"
+          imagePullPolicy: Always
+          env:
+            - name: ADMIN_EMAIL
+              value: "{{ .Values.adminEmail }}"
+            - name: ADMIN_PASSWORD_HASH
+              value: "{{ .Values.adminPasswordHash }}"
+            - name: LICENSE_KEY
+              value: "{{ .Values.licenseKey }}"
+          command: ["/app/init.greenarrow.sh"]
+          volumeMounts:
+            - name: config-volume
+              mountPath: /var/hvmail/control.import
+              readOnly: true
+            - name: ram-queue-volume
+              mountPath: /var/hvmail/qmail-ram/queue
+            - name: bounce-queue-volume
+              mountPath: /var/hvmail/qmail-bounce/queue
+      volumes:
+        - name: config-volume
+          configMap:
+            name: {{ .Release.Name }}-configmap
+        - name: ram-queue-volume
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.ramQueueSize }}
+        - name: bounce-queue-volume
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.bounceQueueSize }}
