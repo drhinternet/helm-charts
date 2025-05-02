@@ -5,11 +5,44 @@ kind: ConfigMap
 metadata:
   name: {{ .Release.Name }}-configmap
 
+### Dynamic Defaults, based on configuration passed in ###
+
+{{- $unitDict := (dict "Ki" 1024 "Mi" 1048576 "Gi" 1073741824) -}}
+
+# Determine default values for RAM queue ramdisk settings.
+{{- $ramQueueSizeRaw := .Values.ramQueueSize -}}
+{{- $ramQueueSizeNumber := regexFind "^\\d+" $ramQueueSizeRaw | int -}}
+{{- $ramQueueSizeUnit := regexFind "[a-zA-Z]+$" $ramQueueSizeRaw -}}
+{{- $ramQueueSizeBytes := mul $ramQueueSizeNumber (get $unitDict $ramQueueSizeUnit) -}}
+{{- $ramQueueLimitMessages := mul 100 (round (div $ramQueueSizeBytes 26214400) 0) -}} # 100 * ceil( 4*$ramQueueSizeBytes / (100*1024*1024) )
+
+# Determine default values for Bounce queue ramdisk settings.
+{{- $bounceQueueSizeRaw := .Values.bounceQueueSize -}}
+{{- $bounceQueueSizeNumber := regexFind "^\\d+" $bounceQueueSizeRaw | int -}}
+{{- $bounceQueueSizeUnit := regexFind "[a-zA-Z]+$" $bounceQueueSizeRaw -}}
+{{- $bounceQueueSizeBytes := mul $bounceQueueSizeNumber (get $unitDict $bounceQueueSizeUnit) -}}
+{{- $bounceQueueLimitMessages := mul 100 (round (div $bounceQueueSizeBytes 26214400) 0) -}} # 100 * ceil( 4*$bounceQueueSizeBytes / (100*1024*1024) )
+
+# Merge in our new defaults (when not provided by the user).
+{{-
+  $defaultConfig := (dict
+    "queue.ram.limit.messages"            $ramQueueLimitMessages
+    "queue.ram.concurrencyremote"         (min 12000 $ramQueueLimitMessages)
+    "queue.ram.ramdisk.size"              (div $ramQueueSizeBytes 1048576)
+    "queue.ram.ramdisk.inodes"            (div $ramQueueSizeBytes 16384)
+    "queue.bounce.limit.messages"         $bounceQueueLimitMessages
+    "queue.bounce.concurrencyremote"      (min 12000 $bounceQueueLimitMessages)
+    "queue.bounce.ramdisk.size"           (div $bounceQueueSizeBytes 1048576)
+    "queue.bounce.ramdisk.inodes"         (div $ramQueueSizeBytes 16384)
+    "greenarrow.conf.perform_autoreload"  uuidv4
+  )
+-}}
+{{- $config := merge .Values.config $defaultConfig -}}
+
+### End Dynamic Defaults ###
+
 data:
-{{- range $name, $content := .Values.config }}
+{{- range $name, $content := $config }}
   {{ $name }}: |
-{{ $content | indent 4 }}
+{{ $content | toString | indent 4 }}
 {{- end }}
-  # The presence of a new value in this file will cause GreenArrow to reload its configuration.
-  greenarrow.conf.perform_autoreload: |
-    {{ uuidv4 }}
