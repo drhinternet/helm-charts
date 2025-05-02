@@ -1,0 +1,164 @@
+#!/bin/bash
+
+# Parse command-line options and look for --.
+
+function print_usage() {
+  echo "pod-run is a utility for running a command across your GreenArrow cluster."
+  echo "This is accomplished by interacting with the 'kubectl' command. The command you want to run"
+  echo "is appended to the pod-run command after double-dashes (--)."
+  echo
+  echo "Usage: $0 [-r|--release RELEASE] [-R|--role ROLE] [-w|--wait-on-config] [-h|--help] -- [command...]"
+  echo
+  echo "Options"
+  echo "--namespace NAMESPACE, -n   Specify your Kubernetes namespace (default: default)"
+  echo "--release RELEASE, -r       Specify your Helm release name (required)"
+  echo "--wait-on-config, -w        Wait for the most recent version of your configuration to be available on each pod before running the command (default: no)"
+  echo "--role ROLE, -R             Specify the pod roles you want to execute on (options: all, mta, event_tracker)"
+  echo "--help, -h                  Show this help text"
+}
+
+done_parsing=0
+namespace=""
+release=""
+role=""
+
+while [[ $done_parsing -eq 0 ]] && [[ $# -gt 0 ]]; do
+  case "$1" in
+    -w|--wait-on-config)
+      wait_on_config=1
+      shift
+      ;;
+    -n|--namespace)
+      namespace="-n '$2'"
+      shift 2
+      ;;
+    -r|--release)
+      release="$2"
+      shift 2
+      ;;
+    -R|--role)
+      role="$2"
+      shift 2
+      ;;
+    -h|--help)
+      print_usage
+      exit 0
+      ;;
+    --)
+      done_parsing=1
+      shift
+      ;;
+    *)
+      echo "Unknown option: $1"
+      print_usage
+      exit 1
+      ;;
+  esac
+done
+
+# Ensure the user entered a command after --.
+
+if [[ $done_parsing -eq 0 ]] || [[ $# -eq 0 ]]; then
+  echo "Command must be provided (following --)."
+  exit 1
+fi
+
+# User must specify the Helm release.
+
+if [ -z "$release" ]; then
+  echo "You must provide your release name with the --release parameter."
+  exit 1
+fi
+
+# Handle different options for "role".
+
+case "$role" in
+  ""|all)
+    role="engine=true"
+    ;;
+  mta|event_tracker)
+    role="role=$role"
+    ;;
+  *)
+    echo "Role can be one of: all, mta, event_tracker"
+    exit 1
+    ;;
+esac
+
+# Get the list of pods we want to exec on.
+
+pods=$(kubectl get pods $namespace --selector=app="$release","$role" -o name --field-selector=status.phase=Running)
+
+exec_exit_code=$?
+
+if [[ $exec_exit_code -ne 0 ]]; then
+  echo "Cannot get list of pods from kubectl (exit status $exec_exit_code)."
+  exit 1
+fi
+
+if [ -z "$pods" ]; then
+  echo "Found no matching pods."
+  exit 1
+fi
+
+# Iterate through the list of pods and exec the requested command.
+
+echo
+
+for pod in $pods; do
+  # Handle if we've requested to wait for the current config to deploy.
+
+  if [[ $wait_on_config -eq 1 ]]; then
+    printf "Waiting on latest configuration to deploy to %s..." "$pod"
+
+    config_matched=0
+    skip_pod=0
+
+    # Loop until either we've determined that the config matches, or need to skip the pod (because we can't read its version).
+
+    while [[ $config_matched -eq 0 ]] && [[ $skip_pod -eq 0 ]]; do
+      wantedid=$(kubectl get "configmap/$release-configmap" -o jsonpath="{.data.greenarrow\.conf\.perform_autoreload}")
+
+      exec_exit_code=$?
+
+      if [[ $exec_exit_code -ne 0 ]]; then
+        echo "error encountered, could not determine current version of configmap from kubectl (exit status $exit_exit_code)"
+        exit 1
+      fi
+
+      currentid=$(kubectl exec $pod -- cat /var/hvmail/control/greenarrow.conf.perform_autoreload)
+
+      exec_exit_code=$?
+
+      if [[ $exec_exit_code -ne 0 ]]; then
+        echo "error encountered, could not determine deployed version of configmap from kubectl for pod $pod (exit status $exit_exit_code), skipping pod"
+        skip_pod=1
+        continue
+      fi
+
+      if [[ "$wantedid" = "$currentid" ]]; then
+        config_matched=1
+      else
+        sleep 1
+      fi
+    done
+
+    echo "ready."
+  fi
+
+  # If we didn't determine we need to skip the pod, exec the command now.
+
+  if [[ $skip_pod -eq 0 ]]; then
+    echo "Executing command on $pod:"
+
+    kubectl exec $pod -- env PATH="/var/hvmail/bin:/usr/bin:/bin" "$@"
+
+    exec_exit_code=$?
+
+    if [[ $exec_exit_code -ne 0 ]]; then
+      echo "!!! Command failed (exit status $exec_exit_code) !!!"
+    fi
+  fi
+
+  echo
+done
