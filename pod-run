@@ -12,20 +12,21 @@ function print_usage() {
   echo "Options"
   echo "--namespace NAMESPACE, -n   Specify your Kubernetes namespace (default: default)"
   echo "--release RELEASE, -r       Specify your Helm release name (required)"
-  echo "--wait-on-config, -w        Wait for the most recent version of your configuration to be available on each pod before running the command (default: no)"
+  echo "--deploy-config, -d         Wait for the most recent version of your configuration to be available and deploy it to each pod before running the command (default: no)"
   echo "--role ROLE, -R             Specify the pod roles you want to execute on (options: all, mta, event_tracker)"
   echo "--help, -h                  Show this help text"
 }
 
-done_parsing=0
+deploy_config=0
 namespace=""
 release=""
 role=""
+done_parsing=0
 
 while [[ $done_parsing -eq 0 ]] && [[ $# -gt 0 ]]; do
   case "$1" in
-    -w|--wait-on-config)
-      wait_on_config=1
+    -d|--deploy-config)
+      deploy_config=1
       shift
       ;;
     -n|--namespace)
@@ -108,7 +109,7 @@ echo
 for pod in $pods; do
   # Handle if we've requested to wait for the current config to deploy.
 
-  if [[ $wait_on_config -eq 1 ]]; then
+  if [[ $deploy_config -eq 1 ]]; then
     printf "Waiting on latest configuration to deploy to %s..." "$pod"
 
     config_matched=0
@@ -117,7 +118,7 @@ for pod in $pods; do
     # Loop until either we've determined that the config matches, or need to skip the pod (because we can't read its version).
 
     while [[ $config_matched -eq 0 ]] && [[ $skip_pod -eq 0 ]]; do
-      wantedid=$(kubectl get "configmap/$release-configmap" -o jsonpath="{.data.greenarrow\.conf\.perform_autoreload}")
+      wantedid=$(kubectl get "configmap/$release-configmap" -o jsonpath="{.data.configuration\.uuid}")
 
       exec_exit_code=$?
 
@@ -126,7 +127,7 @@ for pod in $pods; do
         exit 1
       fi
 
-      currentid=$(kubectl exec $pod -- cat /var/hvmail/control/greenarrow.conf.perform_autoreload)
+      currentid=$(kubectl exec $pod -- cat /var/hvmail/control.import/configuration.uuid)
 
       exec_exit_code=$?
 
@@ -151,12 +152,30 @@ for pod in $pods; do
   if [[ $skip_pod -eq 0 ]]; then
     echo "Executing command on $pod:"
 
-    kubectl exec $pod -- env PATH="/var/hvmail/bin:/usr/bin:/bin" "$@"
+    # If we're set to deploy the new config, do so now.
 
-    exec_exit_code=$?
+    do_run_command=1
 
-    if [[ $exec_exit_code -ne 0 ]]; then
-      echo "!!! Command failed (exit status $exec_exit_code) !!!"
+    if [[ $deploy_config -eq 1 ]]; then
+      kubectl exec $pod -- rsync --archive --quiet --copy-links /var/hvmail/control.import/ /var/hvmail/control/
+      exec_exit_code=$?
+
+      if [[ $exec_exit_code -ne 0 ]]; then
+        echo "!!! Failed to deploy new config (exit status $exec_exit_code) !!!"
+        do_run_command=0
+      fi
+    fi
+
+    # If we're still good to run the command, do so now.
+
+    if [[ $do_run_command -eq 1 ]]; then
+      kubectl exec $pod -- env PATH="/var/hvmail/bin:/usr/bin:/bin" "$@"
+
+      exec_exit_code=$?
+
+      if [[ $exec_exit_code -ne 0 ]]; then
+        echo "!!! Command failed (exit status $exec_exit_code) !!!"
+      fi
     fi
   fi
 
