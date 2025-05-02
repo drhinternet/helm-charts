@@ -1,0 +1,192 @@
+# licenseKey is your license key, as provided by GreenArrow (required).
+licenseKey: ""
+
+# defaultMessageHostname is the default hostname to use for injected messages (required).
+defaultMessageHostname: ""
+
+# mtaReplicaCount is the number of GreenArrow MTA pods that will be created.
+mtaReplicaCount: 5
+
+# mtaDiskLimit is the disk space limit to apply for this GreenArrow MTA pod.
+mtaDiskLimit: 50Gi
+
+# mtaDiskUsedThreshold will cause an MTA to be removed from the injection ingresses if the proportion
+# of its disk limit that is currently used exceeds the given percentage. Once the disk used falls
+# below the given threshold, it will be re-added to the injection ingresses.
+mtaDiskUsedThreshold: "80%"
+
+# adminEmail and adminPasswordHash are used to initialize the first admin user.
+#
+# Generate adminPasswordHash with the following Docker command (you'll be prompted to enter the password you want to
+# hash, twice):
+#
+#     docker run --rm -it greenarrowemail/greenarrow:latest generate_password_hash
+adminEmail: "admin@example.com"
+adminPasswordHash: "v1.1b27b466.2ab17c82838c55c300b49969dd2531dcaf7930f9caf425330726ad2dddf591b6"
+
+# ramQueueSize and bounceQueueSize represent the size of the in-memory delivery queues.
+ramQueueSize: 1Gi
+bounceQueueSize: 200Mi
+
+# config is for user-provided configuration files.
+config:
+  add_iadb_header: '0'
+  bounce.concurrency: '2'
+  bounce.queue_size.hard: '5000'
+  bounce.queue_size.soft: '3000'
+  bounce_processor.conf: ''
+  bouncemaxbytes: '102400'
+  databytes: '1024000'
+  defaultdelivery: "./Maildir/"
+  delivery_attempt_logfile.json: |
+    {
+      "enabled": false,
+      "filename": "",
+      "filename_append_date": false,
+      "pipe_command": "",
+      "format": "json",
+      "include_status": {
+        "success":         true,
+        "deferral":        true,
+        "failure":         true,
+        "failure_toolong": true,
+        "connmaxout":      false
+      },
+      "include_first_attempt_regardless_of_status": true,
+      "include_local_channel": true
+    }
+  dkim.global_header: ''
+  dkim.json: ''
+  doublebounceto: ''
+  event_processor.conf: ''
+  event_processor.json: |
+    {
+      "event_destinations": [
+        {
+          "matches": {
+            "all": true
+          },
+          "destination": {
+            "type": "drop_from_queue"
+          }
+        }
+      ],
+      "use_json_for_http_post": true
+    }
+  httpd.custom.conf: ''
+  httpd.enabled: '1'
+  httpd.listen: '80'
+  httpd.ssl.custom.conf: ''
+  httpd.ssl.listen: '443'
+  integration.all_lists: "SELECT 'a' || id, name FROM s_mailing_lists ORDER BY lower(name)"
+  integration.listid_to_name: SELECT name FROM s_mailing_lists WHERE id::varchar = SPLIT_PART(?,
+    'a', 2)
+  integration.sendid_to_class_and_name: SELECT * FROM s_sendid_to_mailclass_and_description(?)
+    AS (mail_class_name varchar, description varchar)
+  locals: ''
+  logconfig.multilog: ''
+  logrotate.conf: |
+    # see "man logrotate" for details
+    # rotate log files weekly
+    weekly
+
+    # keep 4 weeks worth of backlogs
+    rotate 4
+
+    # create new (empty) log files after rotating old ones
+    create
+
+    # use date as a suffix of the rotated file
+    dateext
+
+    # uncomment this if you want your log files compressed
+    compress
+
+    # RPM packages drop log rotation information into this directory
+    include /var/hvmail/control/logrotate.d
+  opt.conf_split: '2111'
+  opt.ramdisk_use_tmpfs: '1'
+  opt.simplemh.batch.max_bytes: ''
+  opt.simplemh.batch.max_messages: ''
+  opt.simplemh.batch.max_time: ''
+  opt.simplemh.redis_num_workers: ''
+  opt.simplemh_domainkeys_enable: '0'
+  outgoingip: 127.0.0.1
+  pop3.concurrency: '30'
+  pop3.ipaddr: '0'
+  pop3.port: '110'
+  postgres.conf: ''
+  pure-ftpd.args: "--tls=1 --chrooteveryone --noanonymous -lextauth:/var/run/hvmail-pure-authd-studio.sock -O clf:/var/hvmail/log/pure-ftpd/xfer.log"
+  queue.bounce.concurrencylocal: '10'
+  queue.bounce.logconfig: n41 s10485760
+  queue.bounce.loopdev: ''
+  queue.disk.limit.concurrent-queueing: '5'
+  queue.disk.limit.unpreprocessed-messages: '100'
+  queue.disk.logconfig: n246 s10485760
+  queue.ram.concurrencylocal: '10'
+  queue.ram.logconfig: n123 s10485760
+  queue.ram.loopdev: ''
+  rcpthosts: ''
+  record_events.delivery_attempt.json: |
+    {
+      "enabled": false,
+      "include_status": {
+        "success":         true,
+        "deferral":        false,
+        "failure":         true,
+        "failure_toolong": true,
+        "connmaxout":      false
+      },
+      "include_first_attempt_regardless_of_status": true,
+      "include_local_channel": false
+    }
+  record_events.simplemh.bounce_all: '0'
+  record_events.simplemh.bounce_bad_address: '0'
+  record_events.simplemh.click: '0'
+  record_events.simplemh.open: '0'
+  record_events.simplemh.scomp: '0'
+  record_events.simplemh.unsub: '0'
+  redis-np.conf: ''
+  redis.conf: ''
+  simplemh-config: ''
+  smtp.auth: '0'
+  smtp.checkpassword: ''
+  smtp.concurrency: '100'
+  smtp.ipaddr: '0'
+  smtp.port: '25'
+  smtp.starttls: '1'
+  smtp.tcp: |
+    127.0.0.1:allow,RELAYCLIENT=""
+    :allow
+  smtp2: |
+    ENABLED=1
+    IPADDR=0
+    PORT=587
+    CONCURRENCY=100
+    TCPRULES_INHERIT=1
+    SIMPLEMH=1
+    RECORDIO=0
+    RBLS=0
+    GREENARROW_STARTTLS=1
+    SMTP_AUTH=1
+  smtp3: |
+    ENABLED=0
+    IPADDR=0
+    PORT=901
+    CONCURRENCY=100
+    TCPRULES_INHERIT=1
+    SIMPLEMH=1
+    RECORDIO=0
+    RBLS=0
+    GREENARROW_STARTTLS=1
+    SMTP_AUTH=1
+  smtproutes: |
+    discardallmail.drh.net:discardallmail.drh.net:26
+    .discardallmail.drh.net:127.0.0.1:226
+  studio.use_direct_injection: '1'
+  timeoutconnect: '30'
+  timeoutremote: '180'
+  timeoutsmtpd: '120'
+  users-assign: ''
+  virtualdomains: ''
+  webapp.hide_internal_sends: '1'

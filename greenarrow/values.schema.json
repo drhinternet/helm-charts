@@ -1,0 +1,55 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+        "config": {
+            "type": "object",
+            "properties": {
+                "dkim": { "type": "object" },
+                "domainkeys": { "type": "object" },
+                "greenarrow.conf": { "type": "string" },
+                "logrotate.d": { "type": "object" },
+                "notifications_to": { "type": "string" }
+            },
+            "required": [
+                "greenarrow.conf",
+                "notifications_to"
+            ],
+            "propertyNames": {
+                "not": {
+                    "enum": [
+                        "me",
+                        "db.dbname",
+                        "db.password",
+                        "db.username",
+                        "dnscache",
+                        "helohost",
+                        "integration.db_pdo",
+                        "license_key",
+                        "postgres.admin_pass",
+                        "smtp.tcp.cdb",
+                        "tls.dh1024.pem",
+                        "tls.dh2048.pem",
+                        "tls.dh512.pem",
+                        "tls.rsa1024.pem",
+                        "tls.rsa2048.pem",
+                        "tls.rsa512.pem"
+                    ]
+                }
+            }
+        },
+        "defaultMessageHostname": {
+            "type": "string",
+            "minLength": 1
+        },
+        "licenseKey": {
+            "type": "string",
+            "minLength": 1
+        }
+    },
+    "required": [
+        "config",
+        "defaultMessageHostname",
+        "licenseKey"
+    ]
+}
