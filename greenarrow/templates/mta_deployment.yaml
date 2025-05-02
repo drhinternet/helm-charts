@@ -16,6 +16,7 @@ spec:
       labels:
         app: {{ .Release.Name }}
         role: mta
+        engine: "true"
     spec:
       terminationGracePeriodSeconds: 3600 # 1 hour
       containers:
