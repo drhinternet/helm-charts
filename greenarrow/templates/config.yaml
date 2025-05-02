@@ -25,19 +25,27 @@ metadata:
 
 # Merge in our new defaults (when not provided by the user).
 {{-
-  $defaultConfig := (dict
-    "queue.ram.limit.messages"            $ramQueueLimitMessages
-    "queue.ram.concurrencyremote"         (min 12000 $ramQueueLimitMessages)
-    "queue.ram.ramdisk.size"              (div $ramQueueSizeBytes 1048576)
-    "queue.ram.ramdisk.inodes"            (div $ramQueueSizeBytes 16384)
-    "queue.bounce.limit.messages"         $bounceQueueLimitMessages
-    "queue.bounce.concurrencyremote"      (min 12000 $bounceQueueLimitMessages)
-    "queue.bounce.ramdisk.size"           (div $bounceQueueSizeBytes 1048576)
-    "queue.bounce.ramdisk.inodes"         (div $ramQueueSizeBytes 16384)
-    "greenarrow.conf.perform_autoreload"  uuidv4
+  $forcedConfig := (dict
+    "configuration.uuid"                  uuidv4
   )
 -}}
-{{- $config := merge .Values.config $defaultConfig -}}
+{{-
+  $defaultConfig := (dict
+    "defaulthost"                         .Values.defaultMessageHostname
+    "idhost"                              .Values.defaultMessageHostname
+    "plusdomain"                          .Values.defaultMessageHostname
+    "plusdomain"                          .Values.defaultMessageHostname
+    "queue.bounce.concurrencyremote"      (min 12000 $bounceQueueLimitMessages)
+    "queue.bounce.limit.messages"         $bounceQueueLimitMessages
+    "queue.bounce.ramdisk.inodes"         (div $ramQueueSizeBytes 16384)
+    "queue.bounce.ramdisk.size"           (div $bounceQueueSizeBytes 1048576)
+    "queue.ram.concurrencyremote"         (min 12000 $ramQueueLimitMessages)
+    "queue.ram.limit.messages"            $ramQueueLimitMessages
+    "queue.ram.ramdisk.inodes"            (div $ramQueueSizeBytes 16384)
+    "queue.ram.ramdisk.size"              (div $ramQueueSizeBytes 1048576)
+  )
+-}}
+{{- $config := merge $forcedConfig .Values.config $defaultConfig -}}
 
 ### End Dynamic Defaults ###
 
