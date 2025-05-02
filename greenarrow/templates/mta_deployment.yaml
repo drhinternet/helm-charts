@@ -17,6 +17,7 @@ spec:
         app: {{ .Release.Name }}
         role: mta
     spec:
+      terminationGracePeriodSeconds: 3600 # 1 hour
       containers:
         - name: greenarrow-mta
           image: "greenarrowemail/greenarrow:{{ .Chart.AppVersion }}"
@@ -28,6 +29,8 @@ spec:
               value: "{{ .Values.adminPasswordHash }}"
             - name: LICENSE_KEY
               value: "{{ .Values.licenseKey }}"
+            - name: DRAIN_DESTINATION
+              value: "{{ .Release.Name }}-mta-service"
           command: ["/app/init.greenarrow.sh"]
           readinessProbe:
               exec:
