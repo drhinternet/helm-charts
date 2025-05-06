@@ -1,0 +1,81 @@
+#!/usr/bin/env ruby
+
+require 'yaml'
+require 'optparse'
+
+def main
+  # Parse options.
+
+  input_file  = "values.yaml"
+  output_file = "values.yaml"
+  config_dir  = "config"
+
+  OptionParser.new do |opts|
+    opts.on("--input=values.yaml", "The values.yaml file to use as input. (Default: values.yaml)") do |opt|
+      if ( val = opt.to_s ) == ""
+        die("--values= cannot be blank")
+      end
+      values_file = val
+    end
+    opts.on("--output=values.yaml", "The values.yaml file to use as output. This may be the same as the input values file. (Default: values.yaml)") do |opt|
+      if ( val = opt.to_s ) == ""
+        die("--output= cannot be blank")
+      end
+      output_file = val
+    end
+    opts.on("--config-dir=config", "The directory from which to pull files for incorporation into values.yaml. (Default: config)") do |opt|
+      if ( val = opt.to_s ) == ""
+        die("--config-dir= cannot be blank")
+      end
+      config_dir = val
+    end
+  end.parse!
+
+  # Read values.yaml
+
+  input_yaml   = File.read(input_file, encoding: "utf-8")
+  input        = YAML.load(input_yaml)
+  configs      = input.fetch("config", nil) || {}
+
+  # Read the config files.
+
+  Dir["#{ config_dir }/*"].sort.each do |filename|
+    basename = File.basename(filename)
+
+    next if basename =~ %r{\A\.}
+
+    content = File.read(filename, encoding: "utf-8")
+
+    if !content.valid_encoding?
+      die("file #{ filename } contains invalid UTF-8 text")
+    end
+
+    configs[basename] = content.rstrip
+  end
+
+  # Remove the original "config:" block (we do this with a regex instead of re-serializing the original YAML in order to
+  # preserve comments in the rest of the document).
+
+  begin_config_rollup = "# begin config rollup\n"
+  end_config_rollup = "# end config rollup\n"
+
+  output_yaml = input_yaml.gsub(%r{\n(#{ Regexp.escape(begin_config_rollup) })?config:.*((\n[ \t].*)|\n[ \t]*)*(#{ Regexp.escape(end_config_rollup) })?}, "")
+
+  # Append the new "config" key.
+
+  output_yaml << "\n"
+  output_yaml << begin_config_rollup
+  output_yaml << YAML.dump({ "config" => configs }).gsub(%r{\A---\n}, "")
+  output_yaml << end_config_rollup
+
+  # Write the output yaml.
+
+  IO.write(output_file, output_yaml, mode: "w", perm: 0644)
+end
+
+def die(message)
+  STDERR.puts(message)
+  exit(1)
+end
+
+main
