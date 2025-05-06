@@ -157,7 +157,7 @@ for pod in $pods; do
     do_run_command=1
 
     if [[ $deploy_config -eq 1 ]]; then
-      kubectl exec $pod -- rsync --archive --quiet --copy-links /var/hvmail/control.import/ /var/hvmail/control/
+      kubectl exec $pod -- /var/hvmail/container/import_control_files
       exec_exit_code=$?
 
       if [[ $exec_exit_code -ne 0 ]]; then
