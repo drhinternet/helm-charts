@@ -16,6 +16,7 @@ Here's what's currently supported by this Helm chart:
 * Outbound message delivery via an external HAProxy or GreenArrow Proxy server
 * Scaling in and out, messages will be distributed to other MTA pods when scaling in
 * If messages cannot be distributed during a scale in, they can optionally be written to a PersistentVolumeClaim (drainFallbackVolumeClaim)
+* If message drain fails entirely, a snapshot of the pod's persistent path will be saved to an optional PersistentVolumeClaim (drainFallbackVolumeClaim).
 
 Coming soon:
 
