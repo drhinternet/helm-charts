@@ -38,22 +38,37 @@ data:
 
     {{ $loadBalancer := (printf "%s-mta-service" .Release.Name) -}}
 
+    date > /var/lib/greenarrow/message_drain.start_time.txt
+
     {{ if empty .Values.drainFallbackVolumeClaim -}}
     /var/hvmail/bin/greenarrow service drain \
-      {{ $loadBalancer | quote }}
+      {{ $loadBalancer | quote }} \
+      2>&1 | tee -a /var/lib/greenarrow/message_drain.log
     {{ else -}}
     /var/hvmail/bin/greenarrow service drain \
       --fallback-path=/mnt/greenarrow-fallback \
       --automatic-fallback-after={{ printf "%ds" (int64 .Values.mtaDrainFallbackAfterSeconds) | quote }} \
-      {{ $loadBalancer | quote }}
+      {{ $loadBalancer | quote }} \
+      2>&1 | tee -a /var/lib/greenarrow/message_drain.log
     {{- end }}
 
     drainExitStatus=$?
 
-    if [[ $drainExitStatus -ne 0 ]]; then
-      echo "Drain exited status $drainExitStatus"
+    date > /var/lib/greenarrow/message_drain.end_time.txt
 
+    echo "Drain exited status $drainExitStatus."
+
+    if [[ $drainExitStatus -ne 0 ]]; then
       {{ if not (empty .Values.drainFallbackVolumeClaim) -}}
-      echo todo: stop greenarrow & save this instance's persistence path
+      # We have a fallback path, take a snapshot of our persistent path now.
+      /var/hvmail/libexec/svc_make_state down 30 2 /service/*
+      mkdir -p /mnt/greenarrow-fallback/failed_drain_instances
+      cd /mnt/greenarrow-fallback/failed_drain_instances
+      hostname=`hostname`
+      snapshot="`pwd`/$hostname.tar.gz"
+      tar czf "$snapshot" -C /var/lib/greenarrow --transform "s,^.,$hostname," --warning=no-file-ignored .
+      echo "Snapshot saved to $snapshot."
       {{- end }}
     fi
+
+    exit $drainExitStatus
