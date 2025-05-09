@@ -9,6 +9,27 @@ This repository contains a [Helm](https://helm.sh/) chart for installing [GreenA
 
 To configure GreenArrow using Helm, you'll create a `values.yaml` file. The available keys can be seen in the [`greenarrow/values.yaml`](./greenarrow/values.yaml) file.
 
+Here's what's currently supported by this Helm chart:
+
+* Configuration validation
+* Message injection via HTTP Submission API or SMTP
+* Outbound message delivery via an external HAProxy or GreenArrow Proxy server
+* Scaling in and out, messages will be distributed to other MTA pods when scaling in
+* If messages cannot be distributed during a scale in, they can optionally be written to a PersistentVolumeClaim (drainFallbackVolumeClaim)
+
+Coming soon:
+
+* Event Tracker pods to handle inbound events
+* Inbound SMTP for bounce handling
+* Inbound HTTP for click/open handling
+* Redistribution of messages written to the PersistentVolumeClaim (drainFallbackVolumeClaim)
+* Improved documentation describing more details about this Kubernetes integration
+
+Caveats to be aware of:
+
+* When injecting via SMTP, the MTA pods will see the "client ip" of the load balancer, not the source client. This can
+  break IP-based SMTP authorization and source IP logging.
+
 
 ## Directory Structure
 
