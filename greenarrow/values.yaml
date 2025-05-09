@@ -1,5 +1,5 @@
 # Version of GreenArrow to install.
-greenarrowVersion: "0.0.0-0"
+greenarrowVersion: "0.1.0-0"
 
 # licenseKey is your license key, as provided by GreenArrow (required).
 licenseKey: ""

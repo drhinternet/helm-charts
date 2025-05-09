@@ -52,7 +52,7 @@ Here's an example of the configuration needed within `values.yaml`
 
 ```yaml
 # Version of GreenArrow to install.
-greenarrowVersion: "0.0.0-0"
+greenarrowVersion: "0.1.0-0"
 
 # mtaReplicaCount is the number of GreenArrow MTA pods that will be created.
 mtaReplicaCount: 1
