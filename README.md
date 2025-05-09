@@ -19,8 +19,8 @@ Here's what's currently supported by this Helm chart:
 
 Coming soon:
 
-* Event Tracker pods to handle inbound events
-* Inbound SMTP for bounce handling
+* Event Tracker pods to handle inbound bounce/fbl/click/open events
+* Inbound SMTP for bounce/fbl handling
 * Inbound HTTP for click/open handling
 * Redistribution of messages written to the PersistentVolumeClaim (drainFallbackVolumeClaim)
 * Improved documentation describing more details about this Kubernetes integration
