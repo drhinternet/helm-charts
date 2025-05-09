@@ -1,32 +1,52 @@
+# Version of GreenArrow to install.
+greenarrowVersion: "0.0.0-0"
+
 # licenseKey is your license key, as provided by GreenArrow (required).
 licenseKey: ""
+
+# Version of GreenArrow to install on MTA pods. Defaults to greenarrowVersion if not provided.
+mtaGreenArrowVersion: ""
 
 # defaultMessageHostname is the default hostname to use for injected messages (required).
 defaultMessageHostname: ""
 
 # mtaReplicaCount is the number of GreenArrow MTA pods that will be created.
-mtaReplicaCount: 5
+mtaReplicaCount: 3
 
-# mtaDiskLimit is the disk space limit to apply for this GreenArrow MTA pod.
-mtaDiskLimit: 50Gi
-
-# mtaDiskUsedThreshold will cause an MTA to be removed from the injection ingresses if the proportion
-# of its disk limit that is currently used exceeds the given percentage. Once the disk used falls
-# below the given threshold, it will be re-added to the injection ingresses.
-mtaDiskUsedThreshold: "80%"
-
-# adminEmail and adminPasswordHash are used to initialize the first admin user.
+# adminEmail and adminPasswordHash are used to initialize the first admin user (required).
 #
 # Generate adminPasswordHash with the following Docker command (you'll be prompted to enter the password you want to
 # hash, twice):
 #
-#     docker run --rm -it greenarrowemail/greenarrow:latest generate_password_hash
-adminEmail: "admin@example.com"
-adminPasswordHash: "v1.1b27b466.2ab17c82838c55c300b49969dd2531dcaf7930f9caf425330726ad2dddf591b6"
+#     docker run --pull always --rm -it greenarrowemail/greenarrow:latest generate_password_hash
+adminEmail: ""
+adminPasswordHash: ""
+
+# secretConstant is used to generate unique security codes to be processed by this GreenArrow cluster. This value must
+# be the same across all clusters that will process each others inbound events (such as clicks, opens, or bounces).
+#
+# This field is required and can be generated using this command:
+#
+#     docker run --pull always --rm -it greenarrowemail/greenarrow:latest generate_secret_constant
+secretConstant: ""
 
 # ramQueueSize and bounceQueueSize represent the size of the in-memory delivery queues.
 ramQueueSize: 1Gi
 bounceQueueSize: 200Mi
+
+# drainFallbackVolumeClaim is the name of an existing PersistentVolumeClaim that you want messages to be written to in
+# the event that the instance cannot be fully drained. This PersistentVolumeClaim must have an accessMode of ReadWriteMany.
+drainFallbackVolumeClaim: ""
+
+# Give MTA pods this long to fully drain prior to killing the pod, potentially losing data.
+mtaTerminationGracePeriodSeconds: 3600 # 1 hour
+
+# If using drainFallbackVolumeClaim, give MTA pods this long to drain to the load balancer prior to just writing
+# messages to drainFallbackVolumeClaim. A good value for this is half of mtaTerminationGracePeriodSeconds.
+mtaDrainFallbackAfterSeconds: 1800 # 30 minutes (half of mtaTerminationGracePeriodSeconds)
+
+# Set to true if you're using this cluster only for configuration validation.
+validator: false
 
 # config is for user-provided configuration files.
 config:

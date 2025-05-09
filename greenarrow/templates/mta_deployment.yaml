@@ -5,8 +5,11 @@ kind: Deployment
 metadata:
   name: {{ .Release.Name }}-mta
 
+{{ $fallbackPath := "/mnt/greenarrow-fallback" -}}
+{{ $fallbackVolumeName := "fallback-volume" -}}
+
 spec:
-  replicas: {{ .Values.mtaReplicaCount }}
+  replicas: {{ if .Values.validator }}1{{ else }}{{ .Values.mtaReplicaCount }}{{ end }}
   selector:
     matchLabels:
       app: {{ .Release.Name }}
@@ -18,40 +21,55 @@ spec:
         role: mta
         engine: "true"
     spec:
-      terminationGracePeriodSeconds: 3600 # 1 hour
+      terminationGracePeriodSeconds: {{ .Values.mtaTerminationGracePeriodSeconds }}
       containers:
         - name: greenarrow-mta
-          image: "greenarrowemail/greenarrow:{{ .Chart.AppVersion }}"
+          image: "greenarrowemail/greenarrow:{{ coalesce .Values.mtaGreenArrowVersion .Values.greenarrowVersion }}"
           imagePullPolicy: Always
           env:
             - name: ADMIN_EMAIL
-              value: "{{ .Values.adminEmail }}"
+              value: {{ .Values.adminEmail | quote }}
             - name: ADMIN_PASSWORD_HASH
-              value: "{{ .Values.adminPasswordHash }}"
+              value: {{ .Values.adminPasswordHash | quote }}
             - name: LICENSE_KEY
-              value: "{{ .Values.licenseKey }}"
-            - name: DRAIN_DESTINATION
-              value: "{{ .Release.Name }}-mta-service"
+              value: {{ .Values.licenseKey | quote }}
           command: ["/app/init.greenarrow.sh"]
           readinessProbe:
               exec:
                 command:
                   - /var/hvmail/libexec/greenarrow_readinesscheck
-              initialDelaySeconds: 10
+              initialDelaySeconds: 30
               periodSeconds: 5
               timeoutSeconds: 15
           volumeMounts:
             - name: config-volume
               mountPath: /var/hvmail/control.import
               readOnly: true
+            - name: secret-volume
+              mountPath: /var/hvmail/control.secret
+              readOnly: true
+            - name: container-hooks-volume
+              mountPath: /var/hvmail/container
+              readOnly: true
             - name: ram-queue-volume
               mountPath: /var/hvmail/qmail-ram/queue
             - name: bounce-queue-volume
               mountPath: /var/hvmail/qmail-bounce/queue
+            {{ if not (empty .Values.drainFallbackVolumeClaim) -}}
+            - name: {{ $fallbackVolumeName | quote }}
+              mountPath: {{ $fallbackPath | quote }}
+            {{- end }}
       volumes:
         - name: config-volume
           configMap:
             name: {{ .Release.Name }}-configmap
+        - name: container-hooks-volume
+          configMap:
+            name: "{{ .Release.Name }}-container-hooks-configmap"
+            defaultMode: 0755
+        - name: secret-volume
+          secret:
+            secretName: {{ .Release.Name }}-secret
         - name: ram-queue-volume
           emptyDir:
             medium: Memory
@@ -60,3 +78,8 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: {{ .Values.bounceQueueSize }}
+        {{ if not (empty .Values.drainFallbackVolumeClaim) -}}
+        - name: {{ $fallbackVolumeName | quote }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.drainFallbackVolumeClaim | quote }}
+        {{ end -}}

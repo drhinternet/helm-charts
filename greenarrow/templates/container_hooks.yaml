@@ -1,0 +1,59 @@
+apiVersion: v1
+
+kind: ConfigMap
+
+metadata:
+  name: "{{ .Release.Name }}-container-hooks-configmap"
+
+data:
+
+  # This hook accepts an optional destination path, copying the files from the import source
+  # (/var/hvmail/control.import) into that destination (default: /var/hvmail/control).
+  import_control_files: |
+    #!/bin/bash
+
+    src="/var/hvmail/control.import"
+
+    if [ -n "$1" ]; then
+      dst="$1"
+    else
+      dst="/var/hvmail/control"
+    fi
+
+    if [ ! -d "$src" ]; then
+      echo "Source path $src is not a directory."
+      exit 1
+    fi
+
+    if [ ! -d "$dst" ]; then
+      echo "Destination path $dst is not a directory."
+      exit 1
+    fi
+
+    rsync --archive --quiet --copy-links "$src"/ "$dst"/
+
+  # This hook runs during shutdown and drains its pod of messages.
+  pre_shutdown_hook: |
+    #!/bin/bash
+
+    {{ $loadBalancer := (printf "%s-mta-service" .Release.Name) -}}
+
+    {{ if empty .Values.drainFallbackVolumeClaim -}}
+    /var/hvmail/bin/greenarrow service drain \
+      {{ $loadBalancer | quote }}
+    {{ else -}}
+    /var/hvmail/bin/greenarrow service drain \
+      --fallback-path=/mnt/greenarrow-fallback \
+      --automatic-fallback-after={{ printf "%ds" (int64 .Values.mtaDrainFallbackAfterSeconds) | quote }} \
+      {{ $loadBalancer | quote }}
+    {{- end }}
+
+    drainExitStatus=$?
+
+    if [[ $drainExitStatus -ne 0 ]]; then
+      echo "Drain exited status $drainExitStatus"
+
+      {{ if not (empty .Values.drainFallbackVolumeClaim) -}}
+      echo todo: stop greenarrow & save this instance's persistence path
+      {{- end }}
+    fi
