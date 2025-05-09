@@ -10,8 +10,8 @@ function print_usage() {
   echo "Usage: $0 [-r|--release RELEASE] [-R|--role ROLE] [-w|--wait-on-config] [-h|--help] -- [command...]"
   echo
   echo "Options"
-  echo "--namespace NAMESPACE, -n   Specify your Kubernetes namespace (default: default)"
   echo "--release RELEASE, -r       Specify your Helm release name (required)"
+  echo "--namespace NAMESPACE, -n   Specify your Kubernetes namespace (default: default)"
   echo "--deploy-config, -d         Wait for the most recent version of your configuration to be available and deploy it to each pod before running the command (default: no)"
   echo "--role ROLE, -R             Specify the pod roles you want to execute on (options: all, mta, event_tracker)"
   echo "--help, -h                  Show this help text"
@@ -60,7 +60,7 @@ done
 # Ensure the user entered a command after --.
 
 if [[ $done_parsing -eq 0 ]] || [[ $# -eq 0 ]]; then
-  echo "Command must be provided (following --)."
+  print_usage
   exit 1
 fi
 
@@ -88,7 +88,7 @@ esac
 
 # Get the list of pods we want to exec on.
 
-pods=$(kubectl get pods $namespace --selector=app="$release","$role" -o name --field-selector=status.phase=Running)
+pods=$(kubectl get pods $namespace --selector=app="$release","$role" -o name)
 
 exec_exit_code=$?
 
@@ -106,10 +106,20 @@ fi
 
 echo
 
+exit_status=0
+
 for pod in $pods; do
+  # Check that the pod is in a status we want to interact with.
+
+  pod_status=$(kubectl get $pod -o custom-columns=:status.phase | tail -n 1)
+
+  if [[ "$pod_status" != "Pending" ]] && [[ "$pod_status" != "Running" ]]; then
+    skip_pod=1
+  fi
+
   # Handle if we've requested to wait for the current config to deploy.
 
-  if [[ $deploy_config -eq 1 ]]; then
+  if [[ $skip_pod -eq 0 ]] && [[ $deploy_config -eq 1 ]]; then
     printf "Waiting on latest configuration to deploy to %s..." "$pod"
 
     config_matched=0
@@ -118,6 +128,13 @@ for pod in $pods; do
     # Loop until either we've determined that the config matches, or need to skip the pod (because we can't read its version).
 
     while [[ $config_matched -eq 0 ]] && [[ $skip_pod -eq 0 ]]; do
+      pod_status=$(kubectl get $pod -o custom-columns=:status.phase | tail -n 1)
+
+      if [[ "$pod_status" != "Pending" ]] && [[ "$pod_status" != "Running" ]]; then
+        skip_pod=1
+        continue
+      fi
+
       wantedid=$(kubectl get "configmap/$release-configmap" -o jsonpath="{.data.configuration\.uuid}")
 
       exec_exit_code=$?
@@ -163,6 +180,7 @@ for pod in $pods; do
       if [[ $exec_exit_code -ne 0 ]]; then
         echo "!!! Failed to deploy new config (exit status $exec_exit_code) !!!"
         do_run_command=0
+        exit_status=1
       fi
     fi
 
@@ -175,9 +193,12 @@ for pod in $pods; do
 
       if [[ $exec_exit_code -ne 0 ]]; then
         echo "!!! Command failed (exit status $exec_exit_code) !!!"
+        exit_status=1
       fi
     fi
   fi
 
   echo
 done
+
+exit $exit_status
