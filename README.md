@@ -153,7 +153,7 @@ In the above command, `ga2` is the name of the Helm release we're installing. Yo
 your needs. This name will be used as a prefix to most of the Kubernetes resources created.
 
 
-## Upgrade
+## Upgrade / Deploy New Configuration
 
 To upgrade GreenArrow to new configuration, or even a new release, is accomplished via the `helm upgrade` command.
 
