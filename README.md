@@ -1,6 +1,8 @@
 # GreenArrow on Kubernetes
 
-This feature is currently in beta testing. Not all aspects of GreenArrow are currently supported.
+This feature is currently in alpha testing. Not all aspects of GreenArrow are currently supported.
+
+Please contact us if you encounter any bugs and we will help to resolve them.
 
 
 ## Introduction
@@ -29,7 +31,7 @@ Coming soon:
 Caveats to be aware of:
 
 * When injecting via SMTP, the MTA pods will see the "client ip" of the load balancer, not the source client. This can
-  break IP-based SMTP authorization and source IP logging.
+  break IP-based SMTP authorization and source IP logging. (A fix to this will be coming soon.)
 
 
 ## Directory Structure
