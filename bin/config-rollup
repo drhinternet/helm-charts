@@ -15,7 +15,7 @@ def main
       if ( val = opt.to_s ) == ""
         die("--values= cannot be blank")
       end
-      values_file = val
+      input_file = val
     end
     opts.on("--output=values.yaml", "The values.yaml file to use as output. This may be the same as the input values file. (Default: values.yaml)") do |opt|
       if ( val = opt.to_s ) == ""
@@ -30,6 +30,14 @@ def main
       config_dir = val
     end
   end.parse!
+
+  if !File.readable?(input_file)
+    die("file #{ input_file } cannot be read")
+  end
+
+  if !File.directory?(config_dir)
+    die("#{ config_dir } is not a directory")
+  end
 
   # Read values.yaml
 
