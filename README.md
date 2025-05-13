@@ -158,7 +158,13 @@ your needs. This name will be used as a prefix to most of the Kubernetes resourc
 
 ## Upgrade / Deploy New Configuration
 
-To upgrade GreenArrow to new configuration, or even a new release, is accomplished via the `helm upgrade` command.
+To pull the latest changes to GreenArrow's Helm chart, you'll pull from Github into your local repository.
+
+```
+git pull --autostash origin
+```
+
+Upgrading to the new version of the Helm chart is accomplished via the `helm upgrade` command.
 
 ```
 $ helm upgrade ga2 ./greenarrow -f values.yaml
@@ -171,16 +177,36 @@ REVISION: 2
 TEST SUITE: None
 ```
 
-This will update the Kubernetes resources, but not update your running GreenArrow configuration (i.e. the stuff defined
-in the `config:` key or the `config/` folder). To accomplish this, we provide a `pod-run` command that will put the new
-configuration into place and run a command (usually `greenarrow_config reload`).
+The above `helm upgrade` command is the same one you'll use to apply your latest changes to `values.yaml` (for example,
+if you are intending to deploy a change to `greenarrow.conf`). This command will result in your latest configuration
+changes being used for freshly created pods, but not for pods that were running at the time you ran `helm upgrade`.
+
+There are several ways to deploy the new configuration to running pods. First, you could issue Kubernetes a rolling
+restart. This eliminates any variability in what commands need to be run, but does put extra load on your cluster as
+each pod is drained of messages and recreated. In the command below, `ga2-mta` is the name of the deployment we're
+restarting (that is, the `${release}-mta` deployment created by the GreenArrow Helm chart).
+
+```
+kubectl rollout restart deployment ga2-mta
+```
+
+The other, more fine tuned, way to engage the configuration changes is by using the provided `pod-run` command to deploy them.
 
 ```
 bin/pod-run --release ga2 --deploy-config -- greenarrow_config reload
 ```
 
-The above command will get the list of pods in the requested release (ga2), wait for the updated ConfigMap/Secret resources
-to reach the pods (this can take up to a minute, depending on your cluster configuration), then run the requested command (`greenarrow_config reload`).
+If there are other commands that need to be run, such as restarting the MTA services, you can run those using `pod-run` as well.
+
+```
+bin/pod-run --release ga2 --deploy-config -- hvmail_init restart
+```
+
+The `pod-run` command does the following:
+
+1. Use `kubectl` to get a list of pods in the requested Helm release (ga2).
+2. If the `--deploy-config` parameter is provided, wait for the updated ConfigMap/Secret resources to reach the pods (this can take up to a minute, depending on your cluster configuration), then install them in the local filesystem.
+3. Run the requested command (`greenarrow_config reload`) on each pod.
 
 
 ## Configuration Validation
