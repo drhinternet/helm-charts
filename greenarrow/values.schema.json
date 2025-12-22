@@ -1,7 +1,7 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
-    "properties": {
+    "definitions": {
         "config": {
             "type": "object",
             "properties": {
@@ -9,12 +9,17 @@
                 "domainkeys": { "type": "object" },
                 "greenarrow.conf": { "type": "string" },
                 "logrotate.d": { "type": "object" },
-                "notifications_to": { "type": "string" }
-            },
-            "required": [
-                "greenarrow.conf",
-                "notifications_to"
-            ],
+                "notifications_to": { "type": "string" },
+                "smtp.auth": {
+                    "type": "string",
+                    "const": "0",
+                    "$comment": "Authentication must be disabled on SMTP port 25. Use SMTP port 587 for authenticated message injection."
+                },
+                "license_key": {
+                    "type": "string",
+                    "minLength": 1
+                }
+             },
             "propertyNames": {
                 "not": {
                     "enum": [
@@ -25,24 +30,35 @@
                         "dnscache",
                         "helohost",
                         "integration.db_pdo",
-                        "license_key",
                         "postgres.admin_pass",
-                        "smtp.tcp.cdb",
-                        "tls.dh1024.pem",
-                        "tls.dh2048.pem",
-                        "tls.dh512.pem",
-                        "tls.rsa1024.pem",
-                        "tls.rsa2048.pem",
-                        "tls.rsa512.pem"
+                        "smtp.tcp.cdb"
                     ]
                 }
             }
         },
-        "defaultMessageHostname": {
+        "bytesize_required": {
             "type": "string",
-            "minLength": 1
+            "pattern": "^[0-9]+(Ki|Mi|Gi)$"
         },
-        "licenseKey": {
+        "bytesize_optional": {
+            "type": "string",
+            "pattern": "^(|[0-9]+(Ki|Mi|Gi))$"
+        },
+        "cpulimit_optional": {
+            "type": "string",
+            "pattern": "^(|[0-9]+m)$"
+        },
+        "ip_optional": {
+            "type": "string",
+            "pattern": "^(?:|(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))$"
+        }
+    },
+    "properties": {
+        "configAll": { "$ref": "#/definitions/config" },
+        "configMta": { "$ref": "#/definitions/config" },
+        "configEventTracker": { "$ref": "#/definitions/config" },
+        "configTls": { "$ref": "#/definitions/config" },
+        "clusterHostname": {
             "type": "string",
             "minLength": 1
         },
@@ -52,31 +68,47 @@
             "maxLength": 64,
             "pattern": "^[0-9a-fA-F]{64}$"
         },
-        "adminEmail": {
-            "type": "string",
-            "minLength": 1,
-            "pattern": ".+@.+"
-        },
-        "adminPasswordHash": {
-            "type": "string",
-            "minLength": 1,
-            "pattern": "^v1\\."
-        },
         "greenarrowVersion": {
             "type": "string",
-            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+-[0-9]+$"
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9]+)?$"
         },
         "mtaGreenArrowVersion": {
             "type": "string",
-            "pattern": "^(|[0-9]+\\.[0-9]+\\.[0-9]+-[0-9]+)$"
-        }
+            "pattern": "^(|[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9]+)?)$"
+        },
+        "defaultMessageHostname": { "type": "string" },
+        "mtaRamQueueSize": { "$ref": "#/definitions/bytesize_required" },
+        "mtaBounceQueueSize": { "$ref": "#/definitions/bytesize_required" },
+        "eventTrackerRamQueueSize": { "$ref": "#/definitions/bytesize_required" },
+        "eventTrackerBounceQueueSize": { "$ref": "#/definitions/bytesize_required" },
+        "internalNetworkCidrs": { "type": "array" },
+        "amazonEfsFilesystemId": { "type": "string" },
+        "drainFallbackVolumeClaim": { "type": "string" },
+        "mtaCpuResourceRequest": { "$ref": "#/definitions/cpulimit_optional" },
+        "mtaMemoryResourceRequest": { "$ref": "#/definitions/bytesize_optional" },
+        "defaultCpuResourceRequest": { "$ref": "#/definitions/cpulimit_optional" },
+        "defaultMemoryResourceRequest": { "$ref": "#/definitions/bytesize_optional" },
+        "mtaCpuResourceLimit": { "$ref": "#/definitions/cpulimit_optional" },
+        "mtaMemoryResourceLimit": { "$ref": "#/definitions/bytesize_optional" },
+        "defaultCpuResourceLimit": { "$ref": "#/definitions/cpulimit_optional" },
+        "defaultMemoryResourceLimit": { "$ref": "#/definitions/bytesize_optional" },
+        "httpsTlsCertVolumeClaim": { "type": "string" },
+        "eventTrackerReplicaCount": { "type": "integer" },
+        "mtaReplicaCount": { "type": "integer" },
+        "haproxyReplicaCount": { "type": "integer" },
+        "mtaDrainFallbackAfterSeconds": { "type": "integer" },
+        "mtaTerminationGracePeriodSeconds": { "type": "integer" },
+        "validator": { "type": "boolean" },
+        "ingressIP": { "$ref": "#/definitions/ip_optional" },
+        "ingressAnnotations": { "type": [ "null", "object" ] },
+        "imagePullPolicy": { "type": "string" },
+        "prometheusPort": { "type": "integer" },
+        "prometheusAuthorizedCidrs": { "type": "array" },
+        "prometheusVolumeClaim": { "type": "string" }
     },
     "required": [
-        "config",
-        "defaultMessageHostname",
-        "licenseKey",
-        "secretConstant",
-        "adminEmail",
-        "adminPasswordHash"
-    ]
+        "clusterHostname",
+        "secretConstant"
+    ],
+    "additionalProperties": false
 }

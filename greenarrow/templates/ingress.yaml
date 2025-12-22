@@ -1,0 +1,284 @@
+{{ if not .Values.validator }}
+
+#
+# Explanation of how we get the actual source ip (the client's IP) into the SMTP services inside of the GreenArrow pod
+# (instead of receiving the load balancer's IP).
+#
+# service: $release-ingress
+#   ^-- This is the actual ports (25/80/443/587) that is exposed on the public internet.
+#       It distributes load to $release-ingress-haproxy using the actual source connection
+#       (this happens due to the externalTrafficPolicy: Local config).
+#
+# deployment: $release-ingress-haproxy
+#   ^-- This is HAProxy. It accepts the SMTP connections and proxies them to the appropriate load balancer,
+#       prefixing those connections with the PROXY protocol. For HTTP(s) connections, it adds the X-Forwarded-For header.
+#       These pods are also responsible for terminating HTTPS TLS.
+#
+# service: $release-ingress-event-tracker, $release-ingress-mta, $release-ingress-tls
+#   ^-- This is the load balancer that executes distributing the load (coming from HAProxy above)
+#       to the actual event tracker / MTA / TLS pods.
+#
+
+# HAProxy forwards requests according to this flow:
+#
+#   1) If HTTP/HTTPS and the path begins with /api/v1/send.json (HTTP Submission API) => MTA port 80
+#   2) If HTTP/HTTPS and the path begins with /.lets_encrypt_challenge_preflight => TLS port 80
+#   3) If HTTP/HTTPS and the path begins with /.well-known/acme-challenge/ => TLS port 80
+#   4) If SMTP port 587 (SMTP Injection) => MTA port 587
+#   5) Otherwise (SMTP port 25, HTTP/HTTPS) => Event Tracker
+
+# This load balancer distributes SMTP/HTTP/HTTPS load using the external IP to HAProxy (defined next).
+
+{{ $pvc := include "persistent_volume_claims" . | fromYaml -}}
+{{ $releaseName := .Release.Name -}}
+{{ $ingressUsesProxyProtocol := false }}
+{{ $ingressExternalTrafficPolicy := "Local" }}
+{{ $internalPortOffset := ternary 11000 10000 $ingressUsesProxyProtocol -}}
+
+apiVersion: v1
+
+kind: Service
+
+metadata:
+  name: {{ printf "%s-ingress-%s" $releaseName "default" | quote }}
+  labels:
+    app: {{ $releaseName }}
+    role: ingress
+  annotations:
+    {{- range $key, $value := .Values.ingressAnnotations }}
+    {{ printf "%s: %s" $key (quote $value) }}
+    {{- end }}
+
+spec:
+  type: LoadBalancer
+  loadBalancerIP: {{ .Values.ingressIP | quote }}
+  externalTrafficPolicy: {{ $ingressExternalTrafficPolicy | default "Local" | quote }}
+  selector:
+    role: ingress-haproxy
+  ports:
+    {{ range $port := (list 25 587 80 443) -}}
+    - name: {{ printf "port%d" (int $port) | quote }}
+      port: {{ $port }}
+      targetPort: {{ add $internalPortOffset $port }}
+      protocol: TCP
+    {{ end }}
+
+---
+
+# This HAProxy accepts the connections (which will be made using the actual source ip of the client), then
+# proxies that connection to the appropriate destination.
+
+apiVersion: apps/v1
+
+kind: Deployment
+
+metadata:
+  name: {{ .Release.Name }}-ingress-haproxy
+  labels:
+    app: {{ .Release.Name }}
+    role: ingress-haproxy
+
+spec:
+  replicas: {{ .Values.haproxyReplicaCount | default 2 }}  # Add configurable replicas
+  selector:
+    matchLabels:
+      role: ingress-haproxy
+  template:
+    metadata:
+      labels:
+        role: ingress-haproxy
+    spec:
+      containers:
+      - name: haproxy
+        image: greenarrowemail/haproxy-frontend:1.0
+        imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
+        readinessProbe:
+          httpGet:
+            path: /.kubernetes-readiness-probe
+            port: 10080
+        volumeMounts:
+          - name: haproxy-config
+            mountPath: /usr/local/etc/haproxy/haproxy.cfg
+            subPath: haproxy.cfg
+            readOnly: true
+          {{ if not (empty $pvc.httpsTlsCertVolumeClaim) -}}
+          - name: {{ $pvc.httpsTlsCertVolumeName | quote }}
+            mountPath: {{ $pvc.httpsTlsCertPath | quote }}
+          {{- end }}
+      volumes:
+        - name: haproxy-config
+          configMap:
+            name: {{ .Release.Name }}-ingress-haproxy-config
+        {{ if not (empty $pvc.httpsTlsCertVolumeClaim) -}}
+        - name: {{ $pvc.httpsTlsCertVolumeName | quote }}
+          persistentVolumeClaim:
+            claimName: {{ $pvc.httpsTlsCertVolumeClaim | quote }}
+        {{- end }}
+
+---
+
+# This is the configuration for HAProxy, used above.
+
+apiVersion: v1
+
+kind: ConfigMap
+
+metadata:
+  name: {{ .Release.Name }}-ingress-haproxy-config
+
+data:
+  haproxy.cfg: |
+    global
+      log stdout format raw local0
+
+    defaults
+      log global
+      option dontlognull
+      timeout connect 5s
+      timeout client 1m
+      timeout server 1m
+
+    frontend smtp25_in
+      bind *:10025
+      bind *:11025 accept-proxy
+      option tcplog
+      default_backend smtp25_backend
+
+    frontend smtp587_in
+      bind *:10587
+      bind *:11587 accept-proxy
+      option tcplog
+      default_backend smtp587_backend
+
+    frontend http_in
+      bind *:10080
+      bind *:11080 accept-proxy
+      bind *:10443 ssl crt {{ $pvc.httpsTlsCertPath }}/haproxy
+      bind *:11443 ssl crt {{ $pvc.httpsTlsCertPath }}/haproxy accept-proxy
+      mode http
+      option httplog
+      option forwardfor
+      default_backend event_tracker_http_backend
+
+      # Forward HTTP Submission API traffic to MTAs.
+      acl http_submission_api path_beg /api/v1/send.json
+      use_backend mta_http_backend if http_submission_api
+
+      # ACME HTTP-01 challenge traffic → TLS pod
+      acl acme_challenge path_beg /.well-known/acme-challenge/
+      use_backend tls_http_backend if acme_challenge
+      acl preflight_challenge path_beg /.lets_encrypt_challenge_preflight
+      use_backend tls_http_backend if preflight_challenge
+
+      # Prevent access to statistics pages, as they don't represent meaningful data in KRA Mode 1.
+      acl is_stats_page path_beg /greenarrowadmin/h/stats_
+      acl is_stats_page path_beg /ga/eui/disk_queue_summary
+      acl is_stats_page path_beg /ga/eui/dynamic_deliveries
+      http-request return status 200 content-type text/html string "<html><body>Statistics currently unavailable in Kubernetes Reference Architecture Mode 1. If you need this, please contact support and place a feature request.</body></html>\n" if is_stats_page
+
+      # Readiness check, used for Kubernetes to know that HAProxy is running.
+      acl is_readiness_check path_beg /.kubernetes-readiness-probe
+      http-request return status 200 content-type text/plain string "ready\n" if is_readiness_check
+
+    backend smtp25_backend
+      mode tcp
+      server smtp25-service {{ .Release.Name }}-ingress-event-tracker:25 send-proxy
+
+    backend smtp587_backend
+      mode tcp
+      server smtp587-service {{ .Release.Name }}-ingress-mta:587 send-proxy
+
+    backend event_tracker_http_backend
+      mode http
+      server event-tracker-http-service {{ .Release.Name }}-ingress-event-tracker:80 check
+      http-reuse aggressive
+      option http-keep-alive
+
+    backend tls_http_backend
+      mode http
+      server tls-http-service {{ .Release.Name }}-ingress-tls:80 check
+      http-reuse aggressive
+      option http-keep-alive
+
+    backend mta_http_backend
+      mode http
+      server mta-http-service {{ .Release.Name }}-ingress-mta:80 check
+      http-reuse aggressive
+      option http-keep-alive
+
+---
+
+# The internal load balancer to Event Tracker pods.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-ingress-event-tracker
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ .Release.Name }}
+    role: event-tracker
+  ports:
+    - name: smtp
+      port: 25
+      targetPort: 25
+      protocol: TCP
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+
+---
+
+# The internal load balancer to MTA pods.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-ingress-mta
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ .Release.Name }}
+    role: mta
+  ports:
+    - name: smtp
+      port: 587
+      targetPort: 587
+      protocol: TCP
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+    - name: https
+      port: 443
+      targetPort: 443
+      protocol: TCP
+
+---
+
+# The internal load balancer to TLS pods.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-ingress-tls
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ .Release.Name }}
+    role: tls
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+
+{{ end }}

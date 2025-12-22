@@ -1,56 +1,206 @@
+### Dynamic Defaults, based on configuration passed in ###
+
+{{- $unitDict := (dict "Ki" 1024 "Mi" 1048576 "Gi" 1073741824) -}}
+
+{{- /* Determine default values for the different ramdisk settings. */ -}}
+{{- $mtaRamMessageBatchSize := (coalesce (get .Values.configMta "opt.simplemh.batch.max_messages") (get .Values.configAll "opt.simplemh.batch.max_messages") 10) -}}
+{{- $mtaRamQueueCfg := include "ramdisk_config" (dict "size" .Values.mtaRamQueueSize "batch_size" $mtaRamMessageBatchSize) | fromYaml -}}
+{{- $mtaBounceQueueCfg := include "ramdisk_config" (dict "size" .Values.mtaBounceQueueSize "batch_size" 1) | fromYaml -}}
+{{- $eventTrackerRamMessageBatchSize := (coalesce (get .Values.configEventTracker "opt.simplemh.batch.max_messages") (get .Values.configAll "opt.simplemh.batch.max_messages") 1) -}}
+{{- $eventTrackerRamQueueCfg := include "ramdisk_config" (dict "size" .Values.eventTrackerRamQueueSize "batch_size" $eventTrackerRamMessageBatchSize) | fromYaml -}}
+{{- $eventTrackerBounceQueueCfg := include "ramdisk_config" (dict "size" .Values.eventTrackerBounceQueueSize "batch_size" $eventTrackerRamMessageBatchSize) | fromYaml -}}
+
+# Generate .greenarrow-defaults.yml.
+{{- $greenarrowDefaults := `general {
+  define_virtual_mtas_in_config_file yes
+  define_url_domains_in_config_file yes
+  define_mail_classes_in_config_file yes
+  define_incoming_email_domains_in_config_file yes
+  define_throttle_programs_in_config_file yes
+  define_engine_users_in_config_file yes
+  define_database_connections_in_config_file yes
+  define_dkim_keys_in_config_file yes
+  engine_time_zone UTC
+  default_event_tracking_metadata_storage stateless
+  url_domains_get_lets_encrypt_certs %%url_domains_get_lets_encrypt_certs%%
+  incoming_smtp_accept_proxy_protocol yes
+` -}}
+{{- range .Values.internalNetworkCidrs -}}
+  {{- $greenarrowDefaults = printf "%s  accept_drain_from %s\n" $greenarrowDefaults . -}}
+{{- end -}}
+{{- range .Values.internalNetworkCidrs -}}
+  {{- $greenarrowDefaults = printf "%s  http_trusted_proxy_ips %s\n" $greenarrowDefaults . -}}
+{{- end -}}
+{{- if gt (int .Values.prometheusPort) 0 -}}
+  {{- /* prometheusPort represents the port we're exposing Prometheus outside the cluster; Inside, we just use the default port 9090. */ -}}
+  {{- $greenarrowDefaults = printf "%s  prometheus_listen 0.0.0.0:9090\n" $greenarrowDefaults -}}
+{{- end -}}
+{{- $greenarrowDefaults = printf "%s}\n" $greenarrowDefaults -}}
+
+# MTA .greenarrow-defaults.yml customizations.
+{{- $greenarrowDefaultsMta := replace "%%url_domains_get_lets_encrypt_certs%%" "no" $greenarrowDefaults -}}
+
+# EventTracker .greenarrow-defaults.yml customizations.
+{{- $greenarrowDefaultsEventTracker := replace "%%url_domains_get_lets_encrypt_certs%%" "no" $greenarrowDefaults -}}
+
+# TLS .greenarrow-defaults.yml customizations.
+{{- $greenarrowDefaultsTls := replace "%%url_domains_get_lets_encrypt_certs%%" "yes" $greenarrowDefaults -}}
+
+# This configuration generation id.
+{{- $configGenerationId := uuidv4 -}}
+
+{{- $defaultMessageHostname := coalesce .Values.defaultMessageHostname .Values.clusterHostname -}}
+
+# Merge in our new defaults (when not provided by the user).
+{{-
+  $forcedConfigMta := (dict
+    ".greenarrow-defaults.conf"           $greenarrowDefaultsMta
+    "configuration.uuid"                  $configGenerationId
+    "opt.simplemh.batch.max_messages"     $mtaRamQueueCfg.batch_size
+  )
+-}}
+{{-
+  $forcedConfigEventTracker := (dict
+    ".greenarrow-defaults.conf"           $greenarrowDefaultsEventTracker
+    "configuration.uuid"                  $configGenerationId
+    "opt.simplemh.batch.max_messages"     $eventTrackerRamQueueCfg.batch_size
+  )
+-}}
+{{-
+  $forcedConfigTls := (dict
+    ".greenarrow-defaults.conf"           $greenarrowDefaultsTls
+    "configuration.uuid"                  $configGenerationId
+  )
+-}}
+{{-
+  $defaultConfig := (dict
+    "defaulthost"                         $defaultMessageHostname
+    "idhost"                              $defaultMessageHostname
+    "plusdomain"                          $defaultMessageHostname
+    "plusdomain"                          $defaultMessageHostname
+    "me"                                  .Values.clusterHostname
+  )
+-}}
+{{-
+  $defaultConfigMta := (mustMerge
+    (dict
+      "queue.bounce.concurrencyremote"      $mtaBounceQueueCfg.concurrency
+      "queue.bounce.limit.messages"         $mtaBounceQueueCfg.messages
+      "queue.bounce.ramdisk.inodes"         $mtaBounceQueueCfg.inodes
+      "queue.bounce.ramdisk.size"           $mtaBounceQueueCfg.size
+      "queue.ram.concurrencyremote"         $mtaRamQueueCfg.concurrency
+      "queue.ram.limit.messages"            $mtaRamQueueCfg.messages
+      "queue.ram.ramdisk.inodes"            $mtaRamQueueCfg.inodes
+      "queue.ram.ramdisk.size"              $mtaRamQueueCfg.size
+    )
+    $defaultConfig
+  )
+-}}
+{{-
+  $defaultConfigEventTracker := (mustMerge
+    (dict
+      "queue.bounce.concurrencyremote"      $eventTrackerBounceQueueCfg.concurrency
+      "queue.bounce.limit.messages"         $eventTrackerBounceQueueCfg.messages
+      "queue.bounce.ramdisk.inodes"         $eventTrackerBounceQueueCfg.inodes
+      "queue.bounce.ramdisk.size"           $eventTrackerBounceQueueCfg.size
+      "queue.ram.concurrencyremote"         $eventTrackerRamQueueCfg.concurrency
+      "queue.ram.limit.messages"            $eventTrackerRamQueueCfg.messages
+      "queue.ram.ramdisk.inodes"            $eventTrackerRamQueueCfg.inodes
+      "queue.ram.ramdisk.size"              $eventTrackerRamQueueCfg.size
+    )
+    $defaultConfig
+  )
+-}}
+{{-
+  $defaultConfigTls := (mustMerge
+    (dict
+    )
+    $defaultConfig
+  )
+-}}
+{{- $configMta          := mustMerge (dict) $forcedConfigMta          .Values.configMta          .Values.configAll $defaultConfigMta          -}}
+{{- $configEventTracker := mustMerge (dict) $forcedConfigEventTracker .Values.configEventTracker .Values.configAll $defaultConfigEventTracker -}}
+{{- $configTls          := mustMerge (dict) $forcedConfigTls          .Values.configTls          .Values.configAll $defaultConfigTls          -}}
+
+### End Dynamic Defaults ###
+
+## Validation -- Config keys we require to be filled in.
+
+{{- range $src, $conf := dict "configMta" $configMta "configEventTracker" $configEventTracker "configTls" $configTls -}}
+  {{- range $_, $key := list "greenarrow.conf" "notifications_to" "license_key" -}}
+    {{- if empty (get $conf $key) -}}
+      {{- fail (printf "ERROR: %s (or configAll) key %s must be set." $src $key) -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+## Validation -- Ensure smtpd2 is enabled & set to port 587 on the MTA configuration.
+
+{{ $smtpd2EnabledMatches := regexFindAll "ENABLED=(.*)" (get $configMta "smtp2") -1 -}}
+
+{{ if not $smtpd2EnabledMatches -}}
+  {{ fail "MTA smtp2 configuration does not set ENABLED=1." -}}
+{{ else -}}
+  {{ range $match := $smtpd2EnabledMatches -}}
+    {{ if (ne (regexReplaceAll "ENABLED=(.*)" $match "$1") "1") -}}
+      {{ fail "MTA smtp2 configuration does not set ENABLED=1." -}}
+    {{ end -}}
+  {{ end -}}
+{{ end -}}
+
+{{ $smtpd2PortMatches := regexFindAll "PORT=(.*)" (get $configMta "smtp2") -1 -}}
+
+{{ if not $smtpd2PortMatches -}}
+  {{ fail "MTA smtp2 configuration does not set PORT=587." -}}
+{{ else -}}
+  {{ range $match := $smtpd2PortMatches -}}
+    {{ if (ne (regexReplaceAll "PORT=(.*)" $match "$1") "587") -}}
+      {{ fail "MTA smtp2 configuration does not set PORT=587." -}}
+    {{ end -}}
+  {{ end -}}
+{{ end -}}
+
+## Build the different configmaps used for our different deployments.
+
 apiVersion: v1
 
 kind: ConfigMap
 
 metadata:
-  name: {{ .Release.Name }}-configmap
-
-### Dynamic Defaults, based on configuration passed in ###
-
-{{- $unitDict := (dict "Ki" 1024 "Mi" 1048576 "Gi" 1073741824) -}}
-
-# Determine default values for RAM queue ramdisk settings.
-{{- $ramQueueSizeRaw := .Values.ramQueueSize -}}
-{{- $ramQueueSizeNumber := regexFind "^\\d+" $ramQueueSizeRaw | int -}}
-{{- $ramQueueSizeUnit := regexFind "[a-zA-Z]+$" $ramQueueSizeRaw -}}
-{{- $ramQueueSizeBytes := mul $ramQueueSizeNumber (get $unitDict $ramQueueSizeUnit) -}}
-{{- $ramQueueLimitMessages := mul 100 (round (div $ramQueueSizeBytes 26214400) 0) -}} # 100 * ceil( 4*$ramQueueSizeBytes / (100*1024*1024) )
-
-# Determine default values for Bounce queue ramdisk settings.
-{{- $bounceQueueSizeRaw := .Values.bounceQueueSize -}}
-{{- $bounceQueueSizeNumber := regexFind "^\\d+" $bounceQueueSizeRaw | int -}}
-{{- $bounceQueueSizeUnit := regexFind "[a-zA-Z]+$" $bounceQueueSizeRaw -}}
-{{- $bounceQueueSizeBytes := mul $bounceQueueSizeNumber (get $unitDict $bounceQueueSizeUnit) -}}
-{{- $bounceQueueLimitMessages := mul 100 (round (div $bounceQueueSizeBytes 26214400) 0) -}} # 100 * ceil( 4*$bounceQueueSizeBytes / (100*1024*1024) )
-
-# Merge in our new defaults (when not provided by the user).
-{{-
-  $forcedConfig := (dict
-    "configuration.uuid"                  uuidv4
-  )
--}}
-{{-
-  $defaultConfig := (dict
-    "defaulthost"                         .Values.defaultMessageHostname
-    "idhost"                              .Values.defaultMessageHostname
-    "plusdomain"                          .Values.defaultMessageHostname
-    "plusdomain"                          .Values.defaultMessageHostname
-    "queue.bounce.concurrencyremote"      (min 12000 $bounceQueueLimitMessages)
-    "queue.bounce.limit.messages"         $bounceQueueLimitMessages
-    "queue.bounce.ramdisk.inodes"         (div $ramQueueSizeBytes 16384)
-    "queue.bounce.ramdisk.size"           (div $bounceQueueSizeBytes 1048576)
-    "queue.ram.concurrencyremote"         (min 12000 $ramQueueLimitMessages)
-    "queue.ram.limit.messages"            $ramQueueLimitMessages
-    "queue.ram.ramdisk.inodes"            (div $ramQueueSizeBytes 16384)
-    "queue.ram.ramdisk.size"              (div $ramQueueSizeBytes 1048576)
-  )
--}}
-{{- $config := merge $forcedConfig .Values.config $defaultConfig -}}
-
-### End Dynamic Defaults ###
+  name: {{ .Release.Name }}-configmap-mta
 
 data:
-{{- range $name, $content := $config }}
-  {{ $name }}: |
-{{ $content | toString | indent 4 }}
+{{- range $name, $content := $configMta }}
+  {{ $name | quote }}: |
+{{- $content | toString | trim | nindent 4 }}
+{{- end }}
+
+---
+
+apiVersion: v1
+
+kind: ConfigMap
+
+metadata:
+  name: {{ .Release.Name }}-configmap-event-tracker
+
+data:
+{{- range $name, $content := $configEventTracker }}
+  {{ $name | quote }}: |
+{{- $content | toString | trim | nindent 4 }}
+{{- end }}
+
+---
+
+apiVersion: v1
+
+kind: ConfigMap
+
+metadata:
+  name: {{ .Release.Name }}-configmap-tls
+
+data:
+{{- range $name, $content := $configTls }}
+  {{ $name | quote }}: |
+{{- $content | toString | trim | nindent 4 }}
 {{- end }}

@@ -1,0 +1,102 @@
+#!/usr/bin/env ruby
+
+require 'optparse'
+require 'socket'
+require 'securerandom'
+
+options = {
+  host: nil,
+  port: 587,
+  mailclass: 'default'
+}
+
+OptionParser.new do |opts|
+  opts.banner = "Usage: #{$0} [options]"
+
+  opts.on('-f', '--from EMAIL', 'From email address (required)') do |v|
+    options[:from] = v
+  end
+
+  opts.on('-t', '--to EMAIL', 'Recipient email address (required)') do |v|
+    options[:to] = v
+  end
+
+  opts.on('-m', '--mailclass CLASS', "Mail class (default: #{options[:mailclass]})") do |v|
+    options[:mailclass] = v
+  end
+
+  opts.on('-h', '--host HOST', "SMTP host (default: #{options[:host]})") do |v|
+    options[:host] = v
+  end
+
+  opts.on('-p', '--port PORT', Integer, "SMTP port (default: #{options[:port]})") do |v|
+    options[:port] = v
+  end
+
+  opts.on('--help', 'Show this help') do
+    puts opts
+    exit
+  end
+end.parse!
+
+unless options[:from] && options[:to] && options[:host]
+  abort "Error: --from, --to, and --host are required. Use --help for usage."
+end
+
+body = <<~HTML
+<!DOCTYPE html>
+<html>
+<head>
+</head>
+<body>
+<p>This is a test email.</p>
+<p><a href="https://greenarrowemail.com">GreenArrow Email</a></p>
+<p></p>
+<A href="##unsubscribetag##https://greenarrowemail.com"><FONT color=#009dd9>Unsubscribe</A></FONT>
+<p></p>
+</body>
+</html>
+HTML
+
+socket = TCPSocket.new(options[:host], options[:port])
+
+def send_line(socket, line)
+  puts "-> #{line}"
+  socket.print "#{line}\r\n"
+  response = socket.gets
+  puts "<- #{response}"
+  response
+end
+
+def send_data(socket, data)
+  puts "-> [DATA]"
+  socket.print data.gsub(/\r?\n/, "\r\n")
+  socket.print "\r\n.\r\n"
+  response = socket.gets
+  puts "<- #{response}"
+  response
+end
+
+# Read banner
+puts "<- #{socket.gets}"
+
+send_line(socket, "HELO test")
+send_line(socket, "MAIL FROM: #{options[:from]}")
+send_line(socket, "RCPT TO: #{options[:to]}")
+send_line(socket, "DATA")
+
+message = <<~MSG
+Subject: Test Email
+From: #{options[:from]}
+To: #{options[:to]}
+X-GreenArrow-MailClass: #{options[:mailclass]}
+Content-Type: text/html
+Message-ID: <mid-#{ SecureRandom.hex }@#{options[:host]}>
+
+#{body}
+MSG
+
+send_data(socket, message)
+send_line(socket, "QUIT")
+
+socket.close

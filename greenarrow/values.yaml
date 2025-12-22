@@ -1,28 +1,10 @@
-# Version of GreenArrow to install.
-greenarrowVersion: "0.1.0-0"
+### These keys are required to be filled in by the user's values.yaml file:
 
-# licenseKey is your license key, as provided by GreenArrow (required).
-licenseKey: ""
+# The hostname that the cluster uses to refer to itself. This should be a fully qualified domain name that
+# resolves to one or more of the publicly accessible IP addresses for this GreenArrow cluster.
+clusterHostname: ""
 
-# Version of GreenArrow to install on MTA pods. Defaults to greenarrowVersion if not provided.
-mtaGreenArrowVersion: ""
-
-# defaultMessageHostname is the default hostname to use for injected messages (required).
-defaultMessageHostname: ""
-
-# mtaReplicaCount is the number of GreenArrow MTA pods that will be created.
-mtaReplicaCount: 3
-
-# adminEmail and adminPasswordHash are used to initialize the first admin user (required).
-#
-# Generate adminPasswordHash with the following Docker command (you'll be prompted to enter the password you want to
-# hash, twice):
-#
-#     docker run --pull always --rm -it greenarrowemail/greenarrow:latest generate_password_hash
-adminEmail: ""
-adminPasswordHash: ""
-
-# secretConstant is used to generate unique security codes to be processed by this GreenArrow cluster. This value must
+# secretConstant is used to generate unique security codes to be processed by this GreenArrow cluster (required). This value must
 # be the same across all clusters that will process each others inbound events (such as clicks, opens, or bounces).
 #
 # This field is required and can be generated using this command:
@@ -30,26 +12,141 @@ adminPasswordHash: ""
 #     docker run --pull always --rm -it greenarrowemail/greenarrow:latest generate_secret_constant
 secretConstant: ""
 
-# ramQueueSize and bounceQueueSize represent the size of the in-memory delivery queues.
-ramQueueSize: 1Gi
-bounceQueueSize: 200Mi
+### These keys are optional (but take care to review them -- some are very important to consider for your needs):
+
+# Version of GreenArrow to install.
+greenarrowVersion: "4.358.0"
+
+# Version of GreenArrow to install on MTA pods. Defaults to greenarrowVersion if not provided.
+mtaGreenArrowVersion: ""
+
+# defaultMessageHostname is the default hostname to use for injected messages (defaults to clusterHostname).
+defaultMessageHostname: ""
+
+# mtaReplicaCount is the number of GreenArrow MTA pods that will be created.
+mtaReplicaCount: 3
+
+# eventTrackerReplicaCount is the number of GreenArrow Event Tracker pods that will be created.
+eventTrackerReplicaCount: 2
+
+# haproxyReplicaCount is the number of HAProxy ingress pods that will be created.
+haproxyReplicaCount: 2
+
+# mtaCpuResourceRequest requests this amount of cpu time in millicores (e.g. 500m, 2000m) for the MTA pods.
+mtaCpuResourceRequest: ""
+
+# mtaMemoryResourceRequest requests this amount of memory in mebibytes (e.g. 512Mi, 1024Mi) for the MTA pods.
+mtaMemoryResourceRequest: ""
+
+# defaultCpuResourceRequest requests this amount of cpu time in millicores (e.g. 500m, 2000m) for GreenArrow pods.
+# This can be overrridden by mtaCpuResourceRequest for MTA pods.
+defaultCpuResourceRequest: ""
+
+# defaultMemoryResourceRequest requests this amount of memory in mebibytes (e.g. 512Mi, 1024Mi) for GreenArrow pods.
+# This can be overridden by mtaMemoryResourceRequest for MTA pods.
+defaultMemoryResourceRequest: ""
+
+# mtaCpuResourceLimit limits the amount of cpu time in millicores (e.g. 500m, 2000m) of the MTA pods.
+mtaCpuResourceLimit: ""
+
+# mtaMemoryResourceLimit limits the amount of memory in mebibytes (e.g. 512Mi, 1024Mi) of the MTA pods.
+mtaMemoryResourceLimit: ""
+
+# defaultCpuResourceLimit limits the amount of cpu time in millicores (e.g. 500m, 2000m) of GreenArrow pods.
+# This can be overrridden by mtaCpuResourceLimit for MTA pods.
+defaultCpuResourceLimit: ""
+
+# defaultMemoryResourceLimit limits the amount of memory in mebibytes (e.g. 512Mi, 1024Mi) of GreenArrow pods.
+# This can be overridden by mtaMemoryResourceLimit for MTA pods.
+defaultMemoryResourceLimit: ""
+
+# mtaRamQueueSize and mtaBounceQueueSize represent the size of the in-memory delivery queues.
+mtaRamQueueSize: 1Gi
+mtaBounceQueueSize: 200Mi
+
+# Size of the in-memory delivery queues on the event trackers; Event trackers typically do not send email, so these are
+# much smaller than the MTA in-memory delivery queues defined above.
+eventTrackerRamQueueSize: 50Mi
+eventTrackerBounceQueueSize: 20Mi
+
+# The IP address to use for the public ingress. Kubernetes will automatically assign one if not specified.
+ingressIP: ""
+
+# These annotations will be set on the Service/LoadBalancer that faces the public internet.
+ingressAnnotations:
+  # These annotations are relevant when running on Amazon EKS for allowing the internal services to receive
+  # the actual source IP of the incoming network request.
+  #service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+  #service.beta.kubernetes.io/aws-load-balancer-type: "external"
+  #service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
+  #service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+
+
+# httpsTlsCertVolumeClaim is the name of an existing PersistentVolumeClaim that you want to use for storing
+# TLS certificates. This PersistentVolumeClaim must have an accessMode of ReadWriteMany. This must be configured
+# in order to use GreenArrow's TLS integration with Let's Encrypt.
+httpsTlsCertVolumeClaim: ""
 
 # drainFallbackVolumeClaim is the name of an existing PersistentVolumeClaim that you want messages to be written to in
-# the event that the instance cannot be fully drained. This PersistentVolumeClaim must have an accessMode of ReadWriteMany.
+# the event that the instance cannot be fully drained of messages when stopping an MTA pod. This PersistentVolumeClaim
+# must have an accessMode of ReadWriteMany.
 drainFallbackVolumeClaim: ""
 
-# Give MTA pods this long to fully drain prior to killing the pod, potentially losing data.
+# This field allows you to specify an Amazon EFS Filesystem ID that will be used to create
+# the PersistentVolumeClaim entities for drainFallbackVolumeClaim, httpsTlsCertVolumeClaim, and prometheusVolumeClaim.
+#
+# If you specify this, you do not need to specify those fields individually.
+#
+# This command can help to retrieve the Filesystem ID for the EFS volume to use:
+#   aws efs describe-file-systems --query 'FileSystems[*].{ "Filesystem ID":FileSystemId, "Name":Name, "State":LifeCycleState, "Size (Bytes)":SizeInBytes.Value }' --output table
+amazonEfsFilesystemId: ""
+
+# Give MTA pods this long to fully drain prior to killing the pod, potentially losing data. This is a long time to give
+# the MTA pod the best opportunity to successfully drain its messages.
 mtaTerminationGracePeriodSeconds: 3600 # 1 hour
 
 # If using drainFallbackVolumeClaim, give MTA pods this long to drain to the load balancer prior to just writing
 # messages to drainFallbackVolumeClaim. A good value for this is half of mtaTerminationGracePeriodSeconds.
 mtaDrainFallbackAfterSeconds: 1800 # 30 minutes (half of mtaTerminationGracePeriodSeconds)
 
-# Set to true if you're using this cluster only for configuration validation.
-validator: false
+# Set one or more CIDRs that represent the internal IPs used on your cluster. This is used to populate:
+#  - the "accept_drain_from" directive, so that MTA nodes are able to receive drained messages
+#  - the "http_trusted_proxy_ips" directive, so that the HTTP servers will trust the internal load balancers
+#
+# You can find out what IP range your Kubernetes cluster is configured to use with the following command (we recommend
+# you use this to narrow down the list of internal IPs configured in this field):
+#  - kubectl describe pod -n kube-system -l component=kube-controller-manager | grep cluster-cidr
+internalNetworkCidrs:
+  - 127.0.0.0/8
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+  - 192.168.0.0/16
 
-# config is for user-provided configuration files.
-config:
+# Determine the imagePullPolicy for how to behave when starting a pod.
+# Valid options include: IfNotPresent, Always
+imagePullPolicy: IfNotPresent
+
+# Expose a Prometheus endpoint for this cluster. This will expose all metrics emitted by GreenArrow pods inside this
+# cluster into a single external Prometheus port.
+prometheusPort: null # 9090 is the usual port
+
+# Set the list of CIDRs that are authorized to connect to your Prometheus service endpoint.
+prometheusAuthorizedCidrs:
+  - 127.0.0.0/8
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+  - 192.168.0.0/16
+
+# Persistence volume claim for Prometheus. Optional, but Prometheus will not retain its data if its pod is destroyed
+# without it.
+prometheusVolumeClaim: ""
+
+# These maps defines the files that will be written to /var/hvmail/control on the GreenArrow pods.
+#
+# If a file is defined in configMta, configEventTracker, or configTls, then that value will be used for that file
+# on that category of pod. Otherwise, the file as found in configAll will be used.
+
+configAll:
   add_iadb_header: '0'
   bounce.concurrency: '2'
   bounce.queue_size.hard: '5000'
@@ -127,7 +224,6 @@ config:
   opt.conf_split: '2111'
   opt.ramdisk_use_tmpfs: '1'
   opt.simplemh.batch.max_bytes: ''
-  opt.simplemh.batch.max_messages: ''
   opt.simplemh.batch.max_time: ''
   opt.simplemh.redis_num_workers: ''
   opt.simplemh_domainkeys_enable: '0'
@@ -210,3 +306,45 @@ config:
   users-assign: ''
   virtualdomains: ''
   webapp.hide_internal_sends: '1'
+
+configMta:
+  smtp2: |
+    ENABLED=1
+    IPADDR=0
+    PORT=587
+    CONCURRENCY=100
+    TCPRULES_INHERIT=1
+    SIMPLEMH=1
+    RECORDIO=0
+    RBLS=0
+    GREENARROW_STARTTLS=1
+    SMTP_AUTH=1
+
+configEventTracker:
+  smtp2: |
+    ENABLED=0
+    IPADDR=0
+    PORT=587
+    CONCURRENCY=100
+    TCPRULES_INHERIT=1
+    SIMPLEMH=1
+    RECORDIO=0
+    RBLS=0
+    GREENARROW_STARTTLS=1
+    SMTP_AUTH=1
+
+configTls:
+  smtp2: |
+    ENABLED=0
+    IPADDR=0
+    PORT=587
+    CONCURRENCY=100
+    TCPRULES_INHERIT=1
+    SIMPLEMH=1
+    RECORDIO=0
+    RBLS=0
+    GREENARROW_STARTTLS=1
+    SMTP_AUTH=1
+
+# Set to true if you're using this cluster only for configuration validation.
+validator: false

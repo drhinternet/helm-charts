@@ -1,0 +1,74 @@
+#!/usr/bin/env ruby
+
+require 'yaml'
+require 'optparse'
+
+def main
+  # Parse options.
+
+  opt_write_files = false
+  opt_print_yaml  = false
+
+  OptionParser.new do |opts|
+    opts.on("--write-files", "Write the TLS files to the config.all/ directory") do |opt|
+      opt_write_files = !!opt
+    end
+    opts.on("--print-yaml", "Print the values.yaml YAML to add to the configAll key") do |opt|
+      opt_print_yaml = !!opt
+    end
+  end.parse!
+
+  if !opt_write_files && !opt_print_yaml
+    STDERR.puts("must specify either --write-files or --print-yaml")
+    exit(1)
+  elsif opt_write_files && opt_print_yaml
+    STDERR.puts("cannot specify both --write-files and --print-yaml")
+    exit(1)
+  end
+
+  puts "Generating TLS keys and parameters..."
+
+  data = {
+      "tls.rsa512.pem"  => run_openssl("genrsa 512"),
+      "tls.rsa1024.pem" => run_openssl("genrsa 1024"),
+      "tls.dh512.pem"   => run_openssl("dhparam -2 512"),
+      "tls.dh1024.pem"  => run_openssl("dhparam -2 1024"),
+      "tls.dh2048.pem"  => run_openssl("dhparam -2 2048"),
+  }
+
+  puts "...done"
+  puts
+
+  if opt_write_files
+    data.each do |filename, filedata|
+      IO.write("config.all/#{ filename }", filedata, mode: "w", perm: 0644)
+    end
+  elsif opt_print_yaml
+    puts "Add the following to your values.yaml:"
+    puts
+
+    puts YAML.dump({ "configAll" => data }).gsub(%r{\A---\n}, "")
+  end
+
+end
+
+def run_openssl(command)
+  output = %x{docker run --rm alpine/openssl #{ command }}
+
+  if !$?.success?
+    die("openssl command failure (#{ command })")
+  end
+
+  if output !~ /\A\n*-+BEGIN (PRIVATE KEY|DH PARAMETERS)-+\n[a-zA-Z0-9\/\+\n]+=*\n-+END (PRIVATE KEY|DH PARAMETERS)-+\n*\z/
+    die("did not receive expected output from openssl, received:\n#{ output }")
+  end
+
+  output
+end
+
+def die(message)
+  STDERR.puts(message)
+  exit(1)
+end
+
+main

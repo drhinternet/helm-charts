@@ -1,0 +1,42 @@
+# This cronjob restores messages written to the drainFallbackVolumeClaim in the event that messages cannot be
+# successfully drained.
+
+{{ $pvc := include "persistent_volume_claims" . | fromYaml }}
+
+{{ $mtaLoadBalancer := printf "%s-ingress-mta:443" .Release.Name }}
+
+{{ if and (not (empty $pvc.drainFallbackVolumeClaim)) (not .Values.validator) -}}
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-mta-restore-drain-job
+spec:
+  # Schedule in standard cron format: (minute hour day month day-of-week)
+  schedule: "* * * * *" # Every minute
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: {{ .Release.Name }}-mta-restore-drain-job-container
+              image: "greenarrowemail/greenarrow:{{ coalesce .Values.mtaGreenArrowVersion .Values.greenarrowVersion }}"
+              imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
+              command:
+                - /var/hvmail/libexec/greenarrow_container_load_failed_drain_messages
+                - load_all
+                - {{ $mtaLoadBalancer | quote }}
+                - {{ $pvc.drainFallbackPath | quote }}
+              volumeMounts:
+                - name: {{ $pvc.drainFallbackVolumeName | quote }}
+                  mountPath: {{ $pvc.drainFallbackPath | quote }}
+          volumes:
+            - name: {{ $pvc.drainFallbackVolumeName | quote }}
+              persistentVolumeClaim:
+                claimName: {{ $pvc.drainFallbackVolumeClaim | quote }}
+          restartPolicy: Never
+
+{{ end -}}

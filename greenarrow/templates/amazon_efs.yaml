@@ -1,0 +1,60 @@
+{{ $pvc := include "persistent_volume_claims" . | fromYaml }}
+
+{{ if and (not (empty $pvc.amazonEfsFilesystemId)) (not .Values.validator) -}}
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ $pvc.amazonEfsStorageClass | quote }}
+provisioner: efs.csi.aws.com
+parameters:
+  provisioningMode: efs-ap  # EFS Access Points
+  fileSystemId: {{ $pvc.amazonEfsFilesystemId | quote }}
+  directoryPerms: "700"
+  gidRangeStart: "1000"
+  gidRangeEnd: "2000"
+  basePath: "/dynamic_provisioning"
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $pvc.amazonEfsDrainFallbackVolumeClaim | quote }}
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: {{ $pvc.amazonEfsStorageClass | quote }}
+  resources:
+    requests:
+      storage: 10Gi # EFS doesn't actually limit storage, this is just a required field
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $pvc.amazonEfsHttpsTlsCertVolumeClaim | quote }}
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: {{ $pvc.amazonEfsStorageClass | quote }}
+  resources:
+    requests:
+      storage: 10Gi # EFS doesn't actually limit storage, this is just a required field
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $pvc.amazonEfsPrometheusVolumeClaim | quote }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ $pvc.amazonEfsStorageClass | quote }}
+  resources:
+    requests:
+      storage: 10Gi # EFS doesn't actually limit storage, this is just a required field
+
+{{ end -}}

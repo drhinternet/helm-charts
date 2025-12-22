@@ -6,14 +6,17 @@ require 'optparse'
 def main
   # Parse options.
 
-  input_file  = "values.yaml"
-  output_file = "values.yaml"
-  config_dir  = "config"
+  input_file           = "values.yaml"
+  output_file          = "values.yaml"
+  config_all           = "config.all"
+  config_mta           = "config.mta"
+  config_event_tracker = "config.event-tracker"
+  config_tls           = "config.tls"
 
   OptionParser.new do |opts|
     opts.on("--input=values.yaml", "The values.yaml file to use as input. (Default: values.yaml)") do |opt|
       if ( val = opt.to_s ) == ""
-        die("--values= cannot be blank")
+        die("--input= cannot be blank")
       end
       input_file = val
     end
@@ -23,58 +26,66 @@ def main
       end
       output_file = val
     end
-    opts.on("--config-dir=config", "The directory from which to pull files for incorporation into values.yaml. (Default: config)") do |opt|
-      if ( val = opt.to_s ) == ""
-        die("--config-dir= cannot be blank")
-      end
-      config_dir = val
-    end
   end.parse!
 
   if !File.readable?(input_file)
     die("file #{ input_file } cannot be read")
   end
 
-  if !File.directory?(config_dir)
-    die("#{ config_dir } is not a directory")
+  [ config_all, config_mta, config_event_tracker, config_tls ].each do |dir|
+    if !File.directory?(dir)
+      die("#{ dir } is not a directory")
+    end
   end
 
   # Read values.yaml
 
   input_yaml   = File.read(input_file, encoding: "utf-8")
-  input        = YAML.load(input_yaml)
-  configs      = input.fetch("config", nil) || {}
+
+  hash_all           = {}
+  hash_mta           = {}
+  hash_event_tracker = {}
+  hash_tls           = {}
 
   # Read the config files.
 
-  Dir["#{ config_dir }/*"].sort.each do |filename|
-    basename = File.basename(filename)
+  [
+    [ config_all,           hash_all           ],
+    [ config_mta,           hash_mta           ],
+    [ config_event_tracker, hash_event_tracker ],
+    [ config_tls,           hash_tls           ],
+  ].each do |(dir, hash)|
+    Dir["#{ dir }/*"].sort.each do |filename|
+      basename = File.basename(filename)
 
-    next if basename =~ %r{\A\.}
+      next if basename =~ %r{\A\.}
 
-    content = File.read(filename, encoding: "utf-8")
+      content = File.read(filename, encoding: "utf-8")
 
-    if !content.valid_encoding?
-      die("file #{ filename } contains invalid UTF-8 text")
+      if !content.valid_encoding?
+        die("file #{ filename } contains invalid UTF-8 text")
+      end
+
+      hash[basename] = content.rstrip
     end
-
-    configs[basename] = content.rstrip
   end
 
-  # Remove the original "config:" block (we do this with a regex instead of re-serializing the original YAML in order to
+  # Remove the original "config*:" blocks (we do this with a regex instead of re-serializing the original YAML in order to
   # preserve comments in the rest of the document).
 
-  begin_config_rollup = "# begin config rollup\n"
-  end_config_rollup = "# end config rollup\n"
+  output_yaml = input_yaml.gsub(%r{\n(config(All|Mta|EventTracker|Tls):.*((\n[ \t].*)|\n[ \t]*)*)+}, "\n")
+  output_yaml.rstrip!
 
-  output_yaml = input_yaml.gsub(%r{\n(#{ Regexp.escape(begin_config_rollup) })?config:.*((\n[ \t].*)|\n[ \t]*)*(#{ Regexp.escape(end_config_rollup) })?}, "")
-
-  # Append the new "config" key.
+  # Append the new "config" keys.
 
   output_yaml << "\n"
-  output_yaml << begin_config_rollup
-  output_yaml << YAML.dump({ "config" => configs }).gsub(%r{\A---\n}, "")
-  output_yaml << end_config_rollup
+  output_yaml << "\n"
+  output_yaml << YAML.dump({
+    "configAll"          => hash_all,
+    "configMta"          => hash_mta,
+    "configEventTracker" => hash_event_tracker,
+    "configTls"          => hash_tls,
+  }).gsub(%r{\A---\n}, "")
 
   # Write the output yaml.
 
@@ -82,7 +93,7 @@ def main
 end
 
 def die(message)
-  STDERR.puts(message)
+  STDERR.puts("#{ $0 }: #{ message }")
   exit(1)
 end
 

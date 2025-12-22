@@ -1,0 +1,74 @@
+{{ if not .Values.validator }}
+
+# This deployment is a copy of GreenArrow that is dedicated to running the tls-daemon.
+
+{{ $pvc := include "persistent_volume_claims" . | fromYaml }}
+
+apiVersion: apps/v1
+
+kind: Deployment
+
+metadata:
+  name: {{ .Release.Name }}-tls
+  labels:
+    app: {{ .Release.Name }}
+    role: tls
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+      role: tls
+      engine: "true"
+  revisionHistoryLimit: 3
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+        role: tls
+        engine: "true"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.mtaTerminationGracePeriodSeconds }}
+      containers:
+        - name: greenarrow-tls
+          image: "greenarrowemail/greenarrow:{{ .Values.greenarrowVersion }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
+          command: ["/app/init.greenarrow.sh", "tls"]
+          resources:
+            requests:
+              {{ if not (empty .Values.defaultMemoryResourceRequest) }}memory: {{ .Values.defaultMemoryResourceRequest | quote }}{{ end }}
+              {{ if not (empty .Values.defaultCpuResourceRequest) }}cpu: {{ .Values.defaultCpuResourceRequest | quote }}{{ end }}
+            limits:
+              {{ if not (empty .Values.defaultMemoryResourceLimit) }}memory: {{ .Values.defaultMemoryResourceLimit | quote }}{{ end }}
+              {{ if not (empty .Values.defaultCpuResourceLimit) }}cpu: {{ .Values.defaultCpuResourceLimit | quote }}{{ end }}
+          volumeMounts:
+            - name: config-volume
+              mountPath: /var/hvmail/control.import
+              readOnly: true
+            - name: secret-volume
+              mountPath: /var/hvmail/control.secret
+              readOnly: true
+            {{ if not (empty $pvc.httpsTlsCertVolumeClaim) -}}
+            - name: {{ $pvc.httpsTlsCertVolumeName | quote }}
+              mountPath: {{ $pvc.httpsTlsCertPath | quote }}
+              readOnly: false
+            {{- end }}
+      volumes:
+        - name: config-volume
+          configMap:
+            name: {{ .Release.Name }}-configmap-tls
+        - name: secret-volume
+          secret:
+            secretName: {{ .Release.Name }}-secret
+        {{ if not (empty $pvc.httpsTlsCertVolumeClaim) -}}
+        - name: {{ $pvc.httpsTlsCertVolumeName | quote }}
+          persistentVolumeClaim:
+            claimName: {{ $pvc.httpsTlsCertVolumeClaim | quote }}
+        {{- end }}
+
+{{ end }}

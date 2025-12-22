@@ -1,37 +1,29 @@
+{{ if not .Values.validator }}
+
 apiVersion: apps/v1
 
 kind: Deployment
 
 metadata:
-  name: {{ .Release.Name }}-mta
+  name: {{ .Release.Name }}-event-tracker
   labels:
     app: {{ .Release.Name }}
-    role: mta
+    role: event-tracker
 
-{{ $pvc := include "persistent_volume_claims" . | fromYaml }}
-
-{{ $greenarrowVersionMtaProd := coalesce .Values.mtaGreenArrowVersion .Values.greenarrowVersion -}}
-{{ $greenarrowVersion := $greenarrowVersionMtaProd -}}
-{{ if .Values.validator -}}
-  {{ $greenarrowVersion = .Values.greenarrowVersion -}}
-{{ end -}}
-{{ $mtaMemoryResourceLimit := coalesce .Values.mtaMemoryResourceLimit .Values.defaultMemoryResourceLimit -}}
-{{ $mtaCpuResourceLimit := coalesce .Values.mtaCpuResourceLimit .Values.defaultCpuResourceLimit -}}
-{{ $mtaMemoryResourceRequest := coalesce .Values.mtaMemoryResourceRequest .Values.defaultMemoryResourceRequest -}}
-{{ $mtaCpuResourceRequest := coalesce .Values.mtaCpuResourceRequest .Values.defaultCpuResourceRequest -}}
+{{ $pvc := include "persistent_volume_claims" . | fromYaml -}}
 
 spec:
-  replicas: {{ if .Values.validator }}1{{ else }}{{ .Values.mtaReplicaCount }}{{ end }}
+  replicas: {{ .Values.eventTrackerReplicaCount }}
   selector:
     matchLabels:
       app: {{ .Release.Name }}
-      role: mta
-  revisionHistoryLimit: {{ if .Values.validator }}0{{ else }}3{{ end }}
+      role: event-tracker
+  revisionHistoryLimit: 3
   template:
     metadata:
       labels:
         app: {{ .Release.Name }}
-        role: mta
+        role: event-tracker
         engine: "true"
       annotations:
         prometheus.io/scrape: "true"
@@ -40,29 +32,22 @@ spec:
     spec:
       terminationGracePeriodSeconds: {{ .Values.mtaTerminationGracePeriodSeconds }}
       containers:
-        - name: greenarrow-mta
-          image: "greenarrowemail/greenarrow:{{ $greenarrowVersion }}"
+        - name: greenarrow-event-tracker
+          image: "greenarrowemail/greenarrow:{{ .Values.greenarrowVersion }}"
           imagePullPolicy: {{ .Values.imagePullPolicy | quote }}
           ports:
-            - containerPort: 587
-              name: smtp587
+            - containerPort: 25
+              name: smtp25
             - containerPort: 80
               name: http
-          env:
-            - name: GA_DRAIN_FALLBACK_VOLUME_CLAIM
-              value: {{ $pvc.drainFallbackVolumeClaim | quote }}
-            - name: GA_MTA_DRAIN_FALLBACK_AFTER_SECONDS
-              value: {{ printf "%d" (int64 .Values.mtaDrainFallbackAfterSeconds) | quote }}
-            - name: GA_MTA_LOAD_BALANCER
-              value: {{ printf "%s-ingress-mta:443" .Release.Name | quote }}
           command: ["/app/init.greenarrow.sh"]
           resources:
             requests:
-              {{ if not (empty $mtaMemoryResourceRequest) }}memory: {{ $mtaMemoryResourceRequest | quote }}{{ end }}
-              {{ if not (empty $mtaCpuResourceRequest) }}cpu: {{ $mtaCpuResourceRequest | quote }}{{ end }}
+              {{ if not (empty .Values.defaultMemoryResourceRequest) }}memory: {{ .Values.defaultMemoryResourceRequest | quote }}{{ end }}
+              {{ if not (empty .Values.defaultCpuResourceRequest) }}cpu: {{ .Values.defaultCpuResourceRequest | quote }}{{ end }}
             limits:
-              {{ if not (empty $mtaMemoryResourceLimit) }}memory: {{ $mtaMemoryResourceLimit | quote }}{{ end }}
-              {{ if not (empty $mtaCpuResourceLimit) }}cpu: {{ $mtaCpuResourceLimit | quote }}{{ end }}
+              {{ if not (empty .Values.defaultMemoryResourceLimit) }}memory: {{ .Values.defaultMemoryResourceLimit | quote }}{{ end }}
+              {{ if not (empty .Values.defaultCpuResourceLimit) }}cpu: {{ .Values.defaultCpuResourceLimit | quote }}{{ end }}
           readinessProbe:
               exec:
                 command:
@@ -80,11 +65,11 @@ spec:
               mountPath: /var/hvmail/qmail-ram/queue
             - name: bounce-queue-volume
               mountPath: /var/hvmail/qmail-bounce/queue
-            {{ if and (not .Values.validator) (not (empty $pvc.drainFallbackVolumeClaim)) -}}
+            {{ if not (empty $pvc.drainFallbackVolumeClaim) -}}
             - name: {{ $pvc.drainFallbackVolumeName | quote }}
               mountPath: {{ $pvc.drainFallbackPath | quote }}
             {{- end }}
-            {{ if and (not .Values.validator) (not (empty $pvc.httpsTlsCertVolumeClaim)) -}}
+            {{ if not (empty $pvc.httpsTlsCertVolumeClaim) -}}
             - name: {{ $pvc.httpsTlsCertVolumeName | quote }}
               mountPath: {{ $pvc.httpsTlsCertPath | quote }}
               readOnly: true
@@ -92,18 +77,18 @@ spec:
       volumes:
         - name: config-volume
           configMap:
-            name: {{ .Release.Name }}-configmap-mta
+            name: {{ .Release.Name }}-configmap-event-tracker
         - name: secret-volume
           secret:
             secretName: {{ .Release.Name }}-secret
         - name: ram-queue-volume
           emptyDir:
             medium: Memory
-            sizeLimit: {{ .Values.mtaRamQueueSize }}
+            sizeLimit: {{ .Values.eventTrackerRamQueueSize }}
         - name: bounce-queue-volume
           emptyDir:
             medium: Memory
-            sizeLimit: {{ .Values.mtaBounceQueueSize }}
+            sizeLimit: {{ .Values.eventTrackerBounceQueueSize }}
         {{ if not (empty $pvc.drainFallbackVolumeClaim) -}}
         - name: {{ $pvc.drainFallbackVolumeName | quote }}
           persistentVolumeClaim:
@@ -114,3 +99,5 @@ spec:
           persistentVolumeClaim:
             claimName: {{ $pvc.httpsTlsCertVolumeClaim | quote }}
         {{- end }}
+
+{{ end }}
