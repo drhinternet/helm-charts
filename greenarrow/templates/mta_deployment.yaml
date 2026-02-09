@@ -104,12 +104,12 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: {{ .Values.mtaBounceQueueSize }}
-        {{ if not (empty $pvc.drainFallbackVolumeClaim) -}}
+        {{ if and (not .Values.validator) (not (empty $pvc.drainFallbackVolumeClaim)) -}}
         - name: {{ $pvc.drainFallbackVolumeName | quote }}
           persistentVolumeClaim:
             claimName: {{ $pvc.drainFallbackVolumeClaim | quote }}
         {{ end -}}
-        {{ if not (empty $pvc.httpsTlsCertVolumeClaim) -}}
+        {{ if and (not .Values.validator) (not (empty $pvc.httpsTlsCertVolumeClaim)) -}}
         - name: {{ $pvc.httpsTlsCertVolumeName | quote }}
           persistentVolumeClaim:
             claimName: {{ $pvc.httpsTlsCertVolumeClaim | quote }}

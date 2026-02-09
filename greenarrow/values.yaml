@@ -15,7 +15,7 @@ secretConstant: ""
 ### These keys are optional (but take care to review them -- some are very important to consider for your needs):
 
 # Version of GreenArrow to install.
-greenarrowVersion: "4.358.0"
+greenarrowVersion: "4.359.0"
 
 # Version of GreenArrow to install on MTA pods. Defaults to greenarrowVersion if not provided.
 mtaGreenArrowVersion: ""
