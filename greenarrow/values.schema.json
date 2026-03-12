@@ -70,11 +70,11 @@
         },
         "greenarrowVersion": {
             "type": "string",
-            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9]+)?$"
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9a-f]+(-[0-9a-f]+)?$"
         },
         "mtaGreenArrowVersion": {
             "type": "string",
-            "pattern": "^(|[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9]+)?)$"
+            "pattern": "^(|[0-9]+\\.[0-9]+\\.[0-9a-f]+(-[0-9a-f]+)?)$"
         },
         "defaultMessageHostname": { "type": "string" },
         "mtaRamQueueSize": { "$ref": "#/definitions/bytesize_required" },
@@ -99,6 +99,7 @@
         "mtaDrainFallbackAfterSeconds": { "type": "integer" },
         "mtaTerminationGracePeriodSeconds": { "type": "integer" },
         "validator": { "type": "boolean" },
+        "mountRootReadOnly": { "type": "boolean" },
         "ingressIP": { "$ref": "#/definitions/ip_optional" },
         "ingressAnnotations": { "type": [ "null", "object" ] },
         "imagePullPolicy": { "type": "string" },

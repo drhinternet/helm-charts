@@ -55,6 +55,8 @@ spec:
               periodSeconds: 5
               timeoutSeconds: 15
           volumeMounts:
+            - name: greenarrow-volume
+              mountPath: /mnt/greenarrow
             - name: config-volume
               mountPath: /var/hvmail/control.import
               readOnly: true
@@ -74,7 +76,11 @@ spec:
               mountPath: {{ $pvc.httpsTlsCertPath | quote }}
               readOnly: true
             {{- end }}
+          securityContext:
+            readOnlyRootFilesystem: {{ .Values.mountRootReadOnly }}
       volumes:
+        - name: greenarrow-volume
+          emptyDir: {}
         - name: config-volume
           configMap:
             name: {{ .Release.Name }}-configmap-event-tracker

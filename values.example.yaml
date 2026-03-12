@@ -1,0 +1,67 @@
+### Required Settings
+
+# The hostname that the cluster uses to refer to itself. This should be a fully
+# qualified domain name that resolves to one or more of the publicly accessible
+# IP addresses for this GreenArrow cluster.
+clusterHostname: "mail.example.com"
+
+# secretConstant is used to generate unique security codes. This value must be
+# the same across all clusters that will process each others inbound events
+# (such as clicks, opens, or bounces).
+#
+# Generate with:
+#   docker run --pull always --rm -it greenarrowemail/greenarrow:latest generate_secret_constant
+secretConstant: ""
+
+### Optional Settings
+
+# Version of GreenArrow to install. Defaults to the version specified in
+# greenarrow/values.yaml if not set.
+#greenarrowVersion: "4.361.0-5"
+
+# Number of MTA, Event Tracker, and HAProxy pods.
+mtaReplicaCount: 3
+eventTrackerReplicaCount: 2
+haproxyReplicaCount: 2
+
+# The IP address to use for the public ingress. Kubernetes will automatically
+# assign one if not specified.
+ingressIP: ""
+
+# Set one or more CIDRs that represent the internal IPs used on your cluster.
+internalNetworkCidrs:
+  - 127.0.0.0/8
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+  - 192.168.0.0/16
+
+# Annotations for the Service/LoadBalancer that faces the public internet.
+# Uncomment the AWS annotations below if running on Amazon EKS.
+ingressAnnotations: {}
+  #service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+  #service.beta.kubernetes.io/aws-load-balancer-type: "external"
+  #service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
+  #service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+
+# PersistentVolumeClaim (ReadWriteMany) for TLS certificates. Required for
+# GreenArrow's TLS integration with Let's Encrypt.
+httpsTlsCertVolumeClaim: ""
+
+# PersistentVolumeClaim (ReadWriteMany) for drain fallback. Messages are written
+# here if an MTA pod cannot fully drain before stopping.
+drainFallbackVolumeClaim: ""
+
+# If running on AWS, specify an EFS Filesystem ID to automatically create
+# PersistentVolumeClaims for drainFallbackVolumeClaim, httpsTlsCertVolumeClaim,
+# and prometheusVolumeClaim.
+amazonEfsFilesystemId: ""
+
+# Expose a Prometheus metrics endpoint on this port. Set to null to disable.
+prometheusPort: 9090
+
+# GreenArrow configuration files written to /var/hvmail/control on all pods.
+# Override per pod type with configMta, configEventTracker, or configTls.
+configAll: {}
+configMta: {}
+configEventTracker: {}
+configTls: {}

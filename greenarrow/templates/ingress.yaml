@@ -101,10 +101,10 @@ spec:
             mountPath: /usr/local/etc/haproxy/haproxy.cfg
             subPath: haproxy.cfg
             readOnly: true
-          {{ if not (empty $pvc.httpsTlsCertVolumeClaim) -}}
           - name: {{ $pvc.httpsTlsCertVolumeName | quote }}
             mountPath: {{ $pvc.httpsTlsCertPath | quote }}
-          {{- end }}
+        securityContext:
+          readOnlyRootFilesystem: {{ .Values.mountRootReadOnly }}
       volumes:
         - name: haproxy-config
           configMap:
@@ -113,6 +113,9 @@ spec:
         - name: {{ $pvc.httpsTlsCertVolumeName | quote }}
           persistentVolumeClaim:
             claimName: {{ $pvc.httpsTlsCertVolumeClaim | quote }}
+        {{ else }}
+        - name: {{ $pvc.httpsTlsCertVolumeName | quote }}
+          emptyDir: {}
         {{- end }}
 
 ---

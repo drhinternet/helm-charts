@@ -132,6 +132,8 @@ spec:
               mountPath: /etc/prometheus
             - name: prometheus-storage
               mountPath: /prometheus
+          securityContext:
+            readOnlyRootFilesystem: {{ .Values.mountRootReadOnly }}
       volumes:
         - name: prometheus-config
           configMap:

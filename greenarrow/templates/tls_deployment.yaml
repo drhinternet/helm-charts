@@ -47,6 +47,8 @@ spec:
               {{ if not (empty .Values.defaultMemoryResourceLimit) }}memory: {{ .Values.defaultMemoryResourceLimit | quote }}{{ end }}
               {{ if not (empty .Values.defaultCpuResourceLimit) }}cpu: {{ .Values.defaultCpuResourceLimit | quote }}{{ end }}
           volumeMounts:
+            - name: greenarrow-volume
+              mountPath: /mnt/greenarrow
             - name: config-volume
               mountPath: /var/hvmail/control.import
               readOnly: true
@@ -58,7 +60,11 @@ spec:
               mountPath: {{ $pvc.httpsTlsCertPath | quote }}
               readOnly: false
             {{- end }}
+          securityContext:
+            readOnlyRootFilesystem: {{ .Values.mountRootReadOnly }}
       volumes:
+        - name: greenarrow-volume
+          emptyDir: {}
         - name: config-volume
           configMap:
             name: {{ .Release.Name }}-configmap-tls

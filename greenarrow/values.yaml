@@ -15,7 +15,7 @@ secretConstant: ""
 ### These keys are optional (but take care to review them -- some are very important to consider for your needs):
 
 # Version of GreenArrow to install.
-greenarrowVersion: "4.359.0"
+greenarrowVersion: "4.361.0-5"
 
 # Version of GreenArrow to install on MTA pods. Defaults to greenarrowVersion if not provided.
 mtaGreenArrowVersion: ""
@@ -140,6 +140,9 @@ prometheusAuthorizedCidrs:
 # Persistence volume claim for Prometheus. Optional, but Prometheus will not retain its data if its pod is destroyed
 # without it.
 prometheusVolumeClaim: ""
+
+# Mount the root-filesystem of contains in read-only mode.
+mountRootReadOnly: false
 
 # These maps defines the files that will be written to /var/hvmail/control on the GreenArrow pods.
 #

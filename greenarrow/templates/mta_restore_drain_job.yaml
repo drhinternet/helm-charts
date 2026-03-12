@@ -31,9 +31,15 @@ spec:
                 - {{ $mtaLoadBalancer | quote }}
                 - {{ $pvc.drainFallbackPath | quote }}
               volumeMounts:
+                - name: greenarrow-volume
+                  mountPath: /mnt/greenarrow
                 - name: {{ $pvc.drainFallbackVolumeName | quote }}
                   mountPath: {{ $pvc.drainFallbackPath | quote }}
+              securityContext:
+                readOnlyRootFilesystem: {{ .Values.mountRootReadOnly }}
           volumes:
+            - name: greenarrow-volume
+              emptyDir: {}
             - name: {{ $pvc.drainFallbackVolumeName | quote }}
               persistentVolumeClaim:
                 claimName: {{ $pvc.drainFallbackVolumeClaim | quote }}
